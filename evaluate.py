@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 import src.datasets as datasets
-from stc.utils import frame_utils
+from src.utils import frame_utils
 
 from src.raft import RAFT
 from src.utils.utils import InputPadder, forward_interpolate
