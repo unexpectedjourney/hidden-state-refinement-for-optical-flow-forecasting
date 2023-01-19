@@ -13,6 +13,7 @@ import evaluate
 import src.datasets as datasets
 
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 try:
     from torch.cuda.amp import GradScaler
@@ -34,6 +35,8 @@ except:
         def update(self):
             pass
 
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # exclude extremly large displacements
 MAX_FLOW = 400
@@ -148,7 +151,7 @@ def train(args):
     if args.restore_ckpt is not None:
         model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
 
-    model.cuda()
+    model.to(DEVICE)
     model.train()
 
     if args.stage != 'chairs':
@@ -167,16 +170,18 @@ def train(args):
     should_keep_training = True
     while should_keep_training:
 
-        for i_batch, data_blob in enumerate(train_loader):
+        for i_batch, data_blob in enumerate(
+            tqdm(train_loader, total=args.num_steps)
+        ):
             optimizer.zero_grad()
-            image1, image2, flow, valid = [x.cuda() for x in data_blob]
+            image1, image2, flow, valid = [x.to(DEVICE) for x in data_blob]
 
             if args.add_noise:
                 stdv = np.random.uniform(0.0, 5.0)
                 image1 = (image1 + stdv * torch.randn(*
-                          image1.shape).cuda()).clamp(0.0, 255.0)
+                          image1.shape).to(DEVICE)).clamp(0.0, 255.0)
                 image2 = (image2 + stdv * torch.randn(*
-                          image2.shape).cuda()).clamp(0.0, 255.0)
+                          image2.shape).to(DEVICE)).clamp(0.0, 255.0)
 
             flow_predictions = model(image1, image2, iters=args.iters)
 
@@ -255,6 +260,7 @@ if __name__ == '__main__':
     torch.manual_seed(1234)
     np.random.seed(1234)
 
+    print(f"Device: {DEVICE}")
     if not os.path.isdir('checkpoints'):
         os.mkdir('checkpoints')
 
