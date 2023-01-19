@@ -9,6 +9,8 @@ from src.utils import frame_utils
 from src.raft import RAFT
 from src.utils.utils import InputPadder, forward_interpolate
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 @torch.no_grad()
 def create_sintel_submission(model, iters=32, warm_start=False, output_path='sintel_submission'):
@@ -26,14 +28,14 @@ def create_sintel_submission(model, iters=32, warm_start=False, output_path='sin
 
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(
-                image1[None].cuda(), image2[None].cuda())
+                image1[None].to(DEVICE), image2[None].to(DEVICE))
 
             flow_low, flow_pr = model(
                 image1, image2, iters=iters, flow_init=flow_prev, test_mode=True)
             flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
 
             if warm_start:
-                flow_prev = forward_interpolate(flow_low[0])[None].cuda()
+                flow_prev = forward_interpolate(flow_low[0])[None].to(DEVICE)
 
             output_dir = os.path.join(output_path, dstype, sequence)
             output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
@@ -57,7 +59,7 @@ def create_kitti_submission(model, iters=24, output_path='kitti_submission'):
     for test_id in range(len(test_dataset)):
         image1, image2, (frame_id, ) = test_dataset[test_id]
         padder = InputPadder(image1.shape, mode='kitti')
-        image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+        image1, image2 = padder.pad(image1[None].to(DEVICE), image2[None].to(DEVICE))
 
         _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
         flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
@@ -75,8 +77,8 @@ def validate_chairs(model, iters=24):
     val_dataset = datasets.FlyingChairs(split='validation')
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, _ = val_dataset[val_id]
-        image1 = image1[None].cuda()
-        image2 = image2[None].cuda()
+        image1 = image1[None].to(DEVICE)
+        image2 = image2[None].to(DEVICE)
 
         _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
         epe = torch.sum((flow_pr[0].cpu() - flow_gt)**2, dim=0).sqrt()
@@ -98,8 +100,8 @@ def validate_sintel(model, iters=32):
 
         for val_id in range(len(val_dataset)):
             image1, image2, flow_gt, _ = val_dataset[val_id]
-            image1 = image1[None].cuda()
-            image2 = image2[None].cuda()
+            image1 = image1[None].to(DEVICE)
+            image2 = image2[None].to(DEVICE)
 
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
@@ -133,8 +135,8 @@ def validate_kitti(model, iters=24):
     out_list, epe_list = [], []
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, valid_gt = val_dataset[val_id]
-        image1 = image1[None].cuda()
-        image2 = image2[None].cuda()
+        image1 = image1[None].to(DEVICE)
+        image2 = image2[None].to(DEVICE)
 
         padder = InputPadder(image1.shape, mode='kitti')
         image1, image2 = padder.pad(image1, image2)
@@ -176,8 +178,9 @@ if __name__ == '__main__':
 
     model = torch.nn.DataParallel(RAFT(args))
     model.load_state_dict(torch.load(args.model))
+    print(f"Device: {DEVICE}")
 
-    model.cuda()
+    model.to(DEVICE)
     model.eval()
 
     # create_sintel_submission(model.module, warm_start=True)
