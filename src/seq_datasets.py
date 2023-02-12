@@ -138,7 +138,7 @@ class SeqMpiSintel(FlowDataset):
                 )
 
 
-def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
+def fetch_dataloader(args, seq_len=4, TRAIN_DS='C+T+K+S+H'):
     """ Create the data loader for the corresponding trainign set """
 
     if args.stage == 'sintel':
@@ -148,8 +148,8 @@ def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
             'max_scale': 0.6,
             'do_flip': True
         }
-        sintel_clean = SeqMpiSintel(aug_params, split='training', dstype='clean')
-        sintel_final = SeqMpiSintel(aug_params, split='training', dstype='final')
+        sintel_clean = SeqMpiSintel(aug_params, seq_len=seq_len, split='training', dstype='clean')
+        sintel_final = SeqMpiSintel(aug_params, seq_len=seq_len, split='training', dstype='final')
 
         train_dataset = 100*sintel_clean + 100*sintel_final
 

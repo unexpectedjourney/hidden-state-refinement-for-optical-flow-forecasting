@@ -186,10 +186,10 @@ def train(args):
                 flow = flows[:, j, ...]
                 valid = valids[:, j, ...]
 
-                image1.to(DEVICE)
-                image2.to(DEVICE)
-                flow.to(DEVICE)
-                valid.to(DEVICE)
+                image1 = image1.to(DEVICE)
+                image2 = image2.to(DEVICE)
+                flow = flow.to(DEVICE)
+                valid = valid.to(DEVICE)
 
                 if args.add_noise:
                     stdv = np.random.uniform(0.0, 5.0)
