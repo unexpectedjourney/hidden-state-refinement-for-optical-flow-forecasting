@@ -6,6 +6,8 @@ from src.update import BasicUpdateBlock, SmallUpdateBlock
 from src.extractor import BasicEncoder, SmallEncoder
 from src.corr import CorrBlock, AlternateCorrBlock
 from src.utils.utils import coords_grid, upflow8
+from src.refiner import StateRefiner
+
 
 try:
     autocast = torch.cuda.amp.autocast
@@ -26,6 +28,8 @@ class RAFT(nn.Module):
     def __init__(self, args):
         super(RAFT, self).__init__()
         self.args = args
+
+        self.state_refiner = StateRefiner()
 
         if args.small:
             self.hidden_dim = hdim = 96
@@ -91,7 +95,7 @@ class RAFT(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8*H, 8*W)
 
-    def forward(self, image1, image2, iters=12, flow_init=None, upsample=True, test_mode=False):
+    def forward(self, image1, image2, iters=12, flow_init=None, net_init=None, upsample=True, test_mode=False):
         """ Estimate optical flow between pair of frames """
 
         image1 = 2 * (image1 / 255.0) - 1.0
@@ -125,10 +129,26 @@ class RAFT(nn.Module):
 
         coords0, coords1 = self.initialize_flow(image1)
 
-        if flow_init is not None:
-            coords1 = coords1 + flow_init
+        # if flow_init is not None:
+        #     coords1 = coords1 + flow_init
 
         flow_predictions = []
+
+        if net_init is not None and flow_init is not None:
+            net, inp = self.state_refiner(net, inp, net_init, flow_init)
+            net = torch.tanh(net)
+            inp = torch.relu(inp)
+
+            delta_flow = self.update_block.flow_head(net)
+
+            up_mask = self.update_block.mask(net)
+            # coords1 = coords1 + flow_init + delta_flow
+            # TODO test if flow_init here is excessive
+            coords1 = coords1.detach()
+            coords1 = coords1 + delta_flow
+            flow_up = self.upsample_flow(coords1 - coords0, up_mask)
+            flow_predictions.append(flow_up)
+
         for itr in range(iters):
             coords1 = coords1.detach()
             corr = corr_fn(coords1)  # index correlation volume
@@ -152,4 +172,5 @@ class RAFT(nn.Module):
         if test_mode:
             return coords1 - coords0, flow_up
 
-        return flow_predictions
+        net_params = net.detach()
+        return flow_predictions, net_params
