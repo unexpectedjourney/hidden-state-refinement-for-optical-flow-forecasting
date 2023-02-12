@@ -135,7 +135,8 @@ class RAFT(nn.Module):
         flow_predictions = []
 
         if net_init is not None and flow_init is not None:
-            net, inp = self.state_refiner(net, inp, net_init, flow_init)
+            sr_net = self.state_refiner(net, inp, net_init, flow_init)
+            net, imp = torch.split(sr_net, [hdim, cdim], dim=1)
             net = torch.tanh(net)
             inp = torch.relu(inp)
 
