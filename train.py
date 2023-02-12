@@ -11,6 +11,7 @@ import torch.optim as optim
 from src.raft import RAFT
 import evaluate
 import src.datasets as datasets
+import src.seq_datasets as seq_datasets
 
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -157,7 +158,8 @@ def train(args):
     if args.stage != 'chairs':
         model.module.freeze_bn()
 
-    train_loader = datasets.fetch_dataloader(args)
+    # train_loader = datasets.fetch_dataloader(args)
+    train_loader = seq_datasets.fetch_dataloader(args)
     optimizer, scheduler = fetch_optimizer(args, model)
 
     total_steps = 0
@@ -173,29 +175,46 @@ def train(args):
         for i_batch, data_blob in enumerate(
             tqdm(train_loader, total=args.num_steps)
         ):
-            optimizer.zero_grad()
-            image1, image2, flow, valid = [x.to(DEVICE) for x in data_blob]
+            imgs, flows, valids = data_blob
+            flow_init = None
+            net_init = None
 
-            if args.add_noise:
-                stdv = np.random.uniform(0.0, 5.0)
-                image1 = (image1 + stdv * torch.randn(*
-                          image1.shape).to(DEVICE)).clamp(0.0, 255.0)
-                image2 = (image2 + stdv * torch.randn(*
-                          image2.shape).to(DEVICE)).clamp(0.0, 255.0)
+            for j in range(imgs.shape[1]-1):
+                optimizer.zero_grad()
+                image1 = imgs[:, j, ...]
+                image2 = imgs[:, j+1, ...]
+                flow = flows[:, j, ...]
+                valid = valids[:, j, ...]
 
-            flow_predictions = model(image1, image2, iters=args.iters)
+                image1.to(DEVICE)
+                image2.to(DEVICE)
+                flow.to(DEVICE)
+                valid.to(DEVICE)
 
-            loss, metrics = sequence_loss(
-                flow_predictions, flow, valid, args.gamma)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+                if args.add_noise:
+                    stdv = np.random.uniform(0.0, 5.0)
+                    image1 = (image1 + stdv * torch.randn(*image1.shape).to(DEVICE)).clamp(0.0, 255.0)
+                    image2 = (image2 + stdv * torch.randn(*image2.shape).to(DEVICE)).clamp(0.0, 255.0)
 
-            scaler.step(optimizer)
-            scheduler.step()
-            scaler.update()
+                flow_predictions, net_init = model(
+                    image1,
+                    image2,
+                    iters=args.iters,
+                    flow_init=flow_init,
+                    net_init=net_init
+                )
 
-            logger.push(metrics)
+                loss, metrics = sequence_loss(flow_predictions, flow, valid, args.gamma)
+                flow_init = flow_predictions[-1]
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+
+                scaler.step(optimizer)
+                scheduler.step()
+                scaler.update()
+
+                logger.push(metrics)
 
             if total_steps % VAL_FREQ == VAL_FREQ - 1:
                 PATH = 'checkpoints/%d_%s.pth' % (total_steps+1, args.name)
