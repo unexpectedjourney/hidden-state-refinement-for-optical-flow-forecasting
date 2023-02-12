@@ -6,6 +6,8 @@ from src.update import BasicUpdateBlock, SmallUpdateBlock
 from src.extractor import BasicEncoder, SmallEncoder
 from src.corr import CorrBlock, AlternateCorrBlock
 from src.utils.utils import coords_grid, upflow8
+from src.refiner import StateRefiner
+
 
 try:
     autocast = torch.cuda.amp.autocast
@@ -26,6 +28,8 @@ class RAFT(nn.Module):
     def __init__(self, args):
         super(RAFT, self).__init__()
         self.args = args
+
+        self.state_refiner = StateRefiner()
 
         if args.small:
             self.hidden_dim = hdim = 96
@@ -130,9 +134,6 @@ class RAFT(nn.Module):
 
         flow_predictions = []
 
-        # TODO send old-flow(flow_init), old-net, old-imp, new-net, new-imp to
-        # refiner
-
         if net_init is not None and flow_init is not None:
             net, inp = self.state_refiner(net, inp, net_init, flow_init)
             net = torch.tanh(net)
@@ -171,4 +172,5 @@ class RAFT(nn.Module):
         if test_mode:
             return coords1 - coords0, flow_up
 
-        return flow_predictions
+        net_params = net.detach()
+        return flow_predictions, net_params
