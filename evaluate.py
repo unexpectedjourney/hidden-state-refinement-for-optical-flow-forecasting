@@ -125,6 +125,7 @@ def validate_sintel(model, seq_len=2, iters=32):
                     test_mode=True
                 )
                 flow = padder.unpad(flow_pr[0]).cpu()
+                flow_gt = flow_gt.cpu()
 
                 epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
                 epe_list.append(epe.view(-1).numpy())
