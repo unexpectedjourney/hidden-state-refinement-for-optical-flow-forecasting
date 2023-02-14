@@ -145,7 +145,6 @@ class Logger:
         if self.writer is None:
             self.writer = SummaryWriter()
 
-        # self.writer.add_image(img_name, img, step, dataformats='HWC')
         self.writer.add_image(img_name, img, step)
 
     def close(self):
