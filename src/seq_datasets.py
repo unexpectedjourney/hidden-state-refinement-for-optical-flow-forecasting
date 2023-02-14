@@ -49,13 +49,13 @@ class FlowDataset(data.Dataset):
         #     img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
         #     return img1, img2, self.extra_info[index]
 
-        # if not self.init_seed:
-        #     worker_info = torch.utils.data.get_worker_info()
-        #     if worker_info is not None:
-        #         torch.manual_seed(worker_info.id)
-        #         np.random.seed(worker_info.id)
-        #         random.seed(worker_info.id)
-        #         self.init_seed = True
+        if not self.init_seed:
+            worker_info = torch.utils.data.get_worker_info()
+            if worker_info is not None:
+                torch.manual_seed(worker_info.id)
+                np.random.seed(worker_info.id)
+                random.seed(worker_info.id)
+                self.init_seed = True
 
         index = index % len(self.image_list)
 
@@ -138,7 +138,7 @@ class SeqMpiSintel(FlowDataset):
                 )
 
 
-def fetch_dataloader(args, seq_len=4, TRAIN_DS='C+T+K+S+H'):
+def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
     """ Create the data loader for the corresponding trainign set """
 
     if args.stage == 'sintel':
@@ -148,8 +148,8 @@ def fetch_dataloader(args, seq_len=4, TRAIN_DS='C+T+K+S+H'):
             'max_scale': 0.6,
             'do_flip': True
         }
-        sintel_clean = SeqMpiSintel(aug_params, seq_len=seq_len, split='training', dstype='clean')
-        sintel_final = SeqMpiSintel(aug_params, seq_len=seq_len, split='training', dstype='final')
+        sintel_clean = SeqMpiSintel(aug_params, seq_len=args.seq_len, split='training', dstype='clean')
+        sintel_final = SeqMpiSintel(aug_params, seq_len=args.seq_len, split='training', dstype='final')
 
         train_dataset = 100*sintel_clean + 100*sintel_final
 

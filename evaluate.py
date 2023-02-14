@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 
-import src.datasets as datasets
+import src.seq_datasets as seq_datasets
 from src.utils import frame_utils
 
 from src.raft import RAFT
@@ -12,106 +12,122 @@ from src.utils.utils import InputPadder, forward_interpolate
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+# TODO fix function
 @torch.no_grad()
 def create_sintel_submission(model, iters=32, warm_start=False, output_path='sintel_submission'):
     """ Create submission for the Sintel leaderboard """
     model.eval()
-    for dstype in ['clean', 'final']:
-        test_dataset = datasets.MpiSintel(
-            split='test', aug_params=None, dstype=dstype)
+    # for dstype in ['clean', 'final']:
+    #     test_dataset = datasets.MpiSintel(
+    #         split='test', aug_params=None, dstype=dstype)
 
-        flow_prev, sequence_prev = None, None
-        for test_id in range(len(test_dataset)):
-            image1, image2, (sequence, frame) = test_dataset[test_id]
-            if sequence != sequence_prev:
-                flow_prev = None
+    #     flow_prev, sequence_prev = None, None
+    #     for test_id in range(len(test_dataset)):
+    #         image1, image2, (sequence, frame) = test_dataset[test_id]
+    #         if sequence != sequence_prev:
+    #             flow_prev = None
 
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(
-                image1[None].to(DEVICE), image2[None].to(DEVICE))
+    #         padder = InputPadder(image1.shape)
+    #         image1, image2 = padder.pad(
+    #             image1[None].to(DEVICE), image2[None].to(DEVICE))
 
-            flow_low, flow_pr = model(
-                image1, image2, iters=iters, flow_init=flow_prev, test_mode=True)
-            flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
+    #         flow_low, flow_pr = model(
+    #             image1, image2, iters=iters, flow_init=flow_prev, test_mode=True)
+    #         flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
 
-            if warm_start:
-                flow_prev = forward_interpolate(flow_low[0])[None].to(DEVICE)
+    #         if warm_start:
+    #             flow_prev = forward_interpolate(flow_low[0])[None].to(DEVICE)
 
-            output_dir = os.path.join(output_path, dstype, sequence)
-            output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
+    #         output_dir = os.path.join(output_path, dstype, sequence)
+    #         output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
 
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+    #         if not os.path.exists(output_dir):
+    #             os.makedirs(output_dir)
 
-            frame_utils.writeFlow(output_file, flow)
-            sequence_prev = sequence
+    #         frame_utils.writeFlow(output_file, flow)
+    #         sequence_prev = sequence
 
 
+# TODO fix function
 @torch.no_grad()
 def create_kitti_submission(model, iters=24, output_path='kitti_submission'):
     """ Create submission for the Sintel leaderboard """
-    model.eval()
-    test_dataset = datasets.KITTI(split='testing', aug_params=None)
+    # model.eval()
+    # test_dataset = datasets.KITTI(split='testing', aug_params=None)
 
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    # if not os.path.exists(output_path):
+    #     os.makedirs(output_path)
 
-    for test_id in range(len(test_dataset)):
-        image1, image2, (frame_id, ) = test_dataset[test_id]
-        padder = InputPadder(image1.shape, mode='kitti')
-        image1, image2 = padder.pad(image1[None].to(DEVICE), image2[None].to(DEVICE))
+    # for test_id in range(len(test_dataset)):
+    #     image1, image2, (frame_id, ) = test_dataset[test_id]
+    #     padder = InputPadder(image1.shape, mode='kitti')
+    #     image1, image2 = padder.pad(image1[None].to(DEVICE), image2[None].to(DEVICE))
 
-        _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
-        flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
+    #     _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+    #     flow = padder.unpad(flow_pr[0]).permute(1, 2, 0).cpu().numpy()
 
-        output_filename = os.path.join(output_path, frame_id)
-        frame_utils.writeFlowKITTI(output_filename, flow)
+    #     output_filename = os.path.join(output_path, frame_id)
+    #     frame_utils.writeFlowKITTI(output_filename, flow)
 
 
+# TODO fix function
 @torch.no_grad()
 def validate_chairs(model, iters=24):
     """ Perform evaluation on the FlyingChairs (test) split """
-    model.eval()
-    epe_list = []
+    return {}
+    # model.eval()
+    # epe_list = []
 
-    val_dataset = datasets.FlyingChairs(split='validation')
-    for val_id in range(len(val_dataset)):
-        image1, image2, flow_gt, _ = val_dataset[val_id]
-        image1 = image1[None].to(DEVICE)
-        image2 = image2[None].to(DEVICE)
+    # val_dataset = datasets.FlyingChairs(split='validation')
+    # for val_id in range(len(val_dataset)):
+    #     image1, image2, flow_gt, _ = val_dataset[val_id]
+    #     image1 = image1[None].to(DEVICE)
+    #     image2 = image2[None].to(DEVICE)
 
-        _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
-        epe = torch.sum((flow_pr[0].cpu() - flow_gt)**2, dim=0).sqrt()
-        epe_list.append(epe.view(-1).numpy())
+    #     _, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+    #     epe = torch.sum((flow_pr[0].cpu() - flow_gt)**2, dim=0).sqrt()
+    #     epe_list.append(epe.view(-1).numpy())
 
-    epe = np.mean(np.concatenate(epe_list))
-    print("Validation Chairs EPE: %f" % epe)
-    return {'chairs': epe}
+    # epe = np.mean(np.concatenate(epe_list))
+    # print("Validation Chairs EPE: %f" % epe)
+    # return {'chairs': epe}
 
 
 @torch.no_grad()
-def validate_sintel(model, iters=32):
+def validate_sintel(model, seq_len=2, iters=32):
     """ Peform validation using the Sintel (train) split """
     model.eval()
     results = {}
     for dstype in ['clean', 'final']:
-        val_dataset = datasets.MpiSintel(split='training', dstype=dstype)
+        val_dataset = seq_datasets.SeqMpiSintel(split='training', seq_len=seq_len, dstype=dstype)
         epe_list = []
 
         for val_id in range(len(val_dataset)):
-            image1, image2, flow_gt, _ = val_dataset[val_id]
-            image1 = image1[None].to(DEVICE)
-            image2 = image2[None].to(DEVICE)
+            imgs, flow_gts, _ = val_dataset[val_id]
+            imgs = imgs[None]
+            flow_gts = flow_gts[None]
+            flow_init = None
+            net_init = None
+            for j in range(imgs.shape[1]-1):
+                image1 = imgs[:, j, ...].to(DEVICE)
+                image2 = imgs[:, j+1, ...].to(DEVICE)
+                flow_gt = flow_gts[:, j, ...].to(DEVICE)
 
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(image1, image2)
+                padder = InputPadder(image1.shape)
+                image1, image2 = padder.pad(image1, image2)
 
-            flow_low, flow_pr = model(
-                image1, image2, iters=iters, test_mode=True)
-            flow = padder.unpad(flow_pr[0]).cpu()
+                flow_low, flow_pr = model(
+                    image1,
+                    image2,
+                    iters=iters,
+                    flow_init=flow_init,
+                    net_init=net_init,
+                    test_mode=True
+                )
+                flow = padder.unpad(flow_pr[0]).cpu()
 
-            epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
-            epe_list.append(epe.view(-1).numpy())
+                epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
+                epe_list.append(epe.view(-1).numpy())
 
         epe_all = np.concatenate(epe_list)
         epe = np.mean(epe_all)
@@ -126,43 +142,45 @@ def validate_sintel(model, iters=32):
     return results
 
 
+# TODO fix function
 @torch.no_grad()
 def validate_kitti(model, iters=24):
     """ Peform validation using the KITTI-2015 (train) split """
     model.eval()
-    val_dataset = datasets.KITTI(split='training')
+    return {}
+    # val_dataset = datasets.KITTI(split='training')
 
-    out_list, epe_list = [], []
-    for val_id in range(len(val_dataset)):
-        image1, image2, flow_gt, valid_gt = val_dataset[val_id]
-        image1 = image1[None].to(DEVICE)
-        image2 = image2[None].to(DEVICE)
+    # out_list, epe_list = [], []
+    # for val_id in range(len(val_dataset)):
+    #     image1, image2, flow_gt, valid_gt = val_dataset[val_id]
+    #     image1 = image1[None].to(DEVICE)
+    #     image2 = image2[None].to(DEVICE)
 
-        padder = InputPadder(image1.shape, mode='kitti')
-        image1, image2 = padder.pad(image1, image2)
+    #     padder = InputPadder(image1.shape, mode='kitti')
+    #     image1, image2 = padder.pad(image1, image2)
 
-        flow_low, flow_pr = model(image1, image2, iters=iters, test_mode=True)
-        flow = padder.unpad(flow_pr[0]).cpu()
+    #     flow_low, flow_pr = model(image1, image2, iters=iters, test_mode=True)
+    #     flow = padder.unpad(flow_pr[0]).cpu()
 
-        epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
-        mag = torch.sum(flow_gt**2, dim=0).sqrt()
+    #     epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
+    #     mag = torch.sum(flow_gt**2, dim=0).sqrt()
 
-        epe = epe.view(-1)
-        mag = mag.view(-1)
-        val = valid_gt.view(-1) >= 0.5
+    #     epe = epe.view(-1)
+    #     mag = mag.view(-1)
+    #     val = valid_gt.view(-1) >= 0.5
 
-        out = ((epe > 3.0) & ((epe/mag) > 0.05)).float()
-        epe_list.append(epe[val].mean().item())
-        out_list.append(out[val].cpu().numpy())
+    #     out = ((epe > 3.0) & ((epe/mag) > 0.05)).float()
+    #     epe_list.append(epe[val].mean().item())
+    #     out_list.append(out[val].cpu().numpy())
 
-    epe_list = np.array(epe_list)
-    out_list = np.concatenate(out_list)
+    # epe_list = np.array(epe_list)
+    # out_list = np.concatenate(out_list)
 
-    epe = np.mean(epe_list)
-    f1 = 100 * np.mean(out_list)
+    # epe = np.mean(epe_list)
+    # f1 = 100 * np.mean(out_list)
 
-    print("Validation KITTI: %f, %f" % (epe, f1))
-    return {'kitti-epe': epe, 'kitti-f1': f1}
+    # print("Validation KITTI: %f, %f" % (epe, f1))
+    # return {'kitti-epe': epe, 'kitti-f1': f1}
 
 
 if __name__ == '__main__':
@@ -174,6 +192,7 @@ if __name__ == '__main__':
                         action='store_true', help='use mixed precision')
     parser.add_argument('--alternate_corr', action='store_true',
                         help='use efficent correlation implementation')
+    parser.add_argument('--seq_len', type=int, default=4)
     args = parser.parse_args()
 
     model = torch.nn.DataParallel(RAFT(args))
@@ -191,7 +210,7 @@ if __name__ == '__main__':
             validate_chairs(model.module)
 
         elif args.dataset == 'sintel':
-            validate_sintel(model.module)
+            validate_sintel(model.module, seq_len=args.seq_len)
 
         elif args.dataset == 'kitti':
             validate_kitti(model.module)
