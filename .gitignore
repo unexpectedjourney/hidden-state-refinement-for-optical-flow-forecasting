@@ -5,6 +5,8 @@ pytorch_env
 models
 build
 correlation.egg-info
+runs/
+checkpoints/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
