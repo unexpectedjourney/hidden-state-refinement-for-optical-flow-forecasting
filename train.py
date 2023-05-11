@@ -12,6 +12,7 @@ from src.raft import RAFT
 import evaluate
 import src.datasets as datasets
 import src.seq_datasets as seq_datasets
+from src.utils.flow_viz import flow_to_image
 
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -85,7 +86,7 @@ def fetch_optimizer(args, model):
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer,
         args.lr,
-        args.num_steps+100,
+        args.num_steps*(args.seq_len-1)+100,
         pct_start=0.05,
         cycle_momentum=False,
         anneal_strategy='linear',
@@ -140,11 +141,64 @@ class Logger:
         for key in results:
             self.writer.add_scalar(key, results[key], self.total_steps)
 
+    def write_img(self, img, img_name, step):
+        if self.writer is None:
+            self.writer = SummaryWriter()
+
+        self.writer.add_image(img_name, img, step)
+
     def close(self):
         self.writer.close()
 
 
+def write_validation_seq_result(model, data_blob, logger, img_name, steps):
+    model.eval()
+    with torch.no_grad():
+        imgs, flows, valids = data_blob
+        flow_init = None
+        net_init = None
+
+        for j in range(imgs.shape[1]-1):
+            image1 = imgs[:, j, ...]
+            image2 = imgs[:, j+1, ...]
+            flow = flows[:, j, ...]
+            valid = valids[:, j, ...]
+
+            image1 = image1.to(DEVICE)
+            image2 = image2.to(DEVICE)
+            flow = flow.to(DEVICE)
+            valid = valid.to(DEVICE)
+
+            flow_predictions, net_init = model(
+                image1,
+                image2,
+                iters=args.iters,
+                flow_init=flow_init,
+                net_init=net_init
+            )
+
+            flow_init = flow_predictions[-1].clone().detach()
+
+    model.train()
+    flow_predictions = [el.clone().detach().cpu().numpy()[0, ...] for el in flow_predictions]
+    flow_predictions = flow_predictions[0:1] + flow_predictions[-2:]
+
+    flow_prediction_line = np.concatenate(flow_predictions, axis=2)
+    flow_prediction_line = flow_to_image(flow_prediction_line.T).T
+    logger.write_img(flow_prediction_line, img_name, steps)
+
+
 def train(args):
+    aug_params = {
+        'crop_size': args.image_size,
+    }
+    val_data = seq_datasets.SeqMpiSintel(
+        aug_params,
+        split='training',
+        seq_len=args.seq_len,
+        dstype="clean"
+    )
+    val_data_blob = [el.unsqueeze(0) for el in val_data[0]]
 
     model = nn.DataParallel(RAFT(args), device_ids=args.gpus)
     print("Parameter Count: %d" % count_parameters(model))
@@ -158,7 +212,6 @@ def train(args):
     if args.stage != 'chairs':
         model.module.freeze_bn()
 
-    # train_loader = datasets.fetch_dataloader(args)
     train_loader = seq_datasets.fetch_dataloader(args)
     optimizer, scheduler = fetch_optimizer(args, model)
 
@@ -167,7 +220,6 @@ def train(args):
     logger = Logger(model, scheduler)
 
     VAL_FREQ = 5000
-    add_noise = True
 
     should_keep_training = True
     while should_keep_training:
@@ -176,6 +228,7 @@ def train(args):
             tqdm(train_loader, total=args.num_steps)
         ):
             imgs, flows, valids = data_blob
+
             flow_init = None
             net_init = None
 
@@ -219,13 +272,22 @@ def train(args):
             if total_steps % VAL_FREQ == VAL_FREQ - 1:
                 PATH = 'checkpoints/%d_%s.pth' % (total_steps+1, args.name)
                 torch.save(model.state_dict(), PATH)
+                write_validation_seq_result(
+                    model,
+                    val_data_blob,
+                    logger,
+                    "train-sintel",
+                    total_steps
+                )
 
                 results = {}
                 for val_dataset in args.validation:
                     if val_dataset == 'chairs':
                         results.update(evaluate.validate_chairs(model.module))
                     elif val_dataset == 'sintel':
-                        results.update(evaluate.validate_sintel(model.module))
+                        results.update(evaluate.validate_sintel(
+                            model.module, seq_len=args.seq_len
+                        ))
                     elif val_dataset == 'kitti':
                         results.update(evaluate.validate_kitti(model.module))
 
@@ -274,6 +336,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.8,
                         help='exponential weighting')
     parser.add_argument('--add_noise', action='store_true')
+    parser.add_argument('--seq_len', type=int, default=4)
     args = parser.parse_args()
 
     torch.manual_seed(1234)

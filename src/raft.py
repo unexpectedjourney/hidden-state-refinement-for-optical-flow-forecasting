@@ -135,20 +135,22 @@ class RAFT(nn.Module):
         flow_predictions = []
 
         if net_init is not None and flow_init is not None:
-            sr_net = self.state_refiner(net, inp, net_init, flow_init)
-            net, imp = torch.split(sr_net, [hdim, cdim], dim=1)
-            net = torch.tanh(net)
-            inp = torch.relu(inp)
+            with autocast(enabled=self.args.mixed_precision):
+                # TODO test inp advs and disadvs
+                sr_net = self.state_refiner(net, inp, net_init, flow_init)
+                net, inp = torch.split(sr_net, [hdim, cdim], dim=1)
+                net = torch.tanh(net)
+                inp = torch.relu(inp)
 
-            delta_flow = self.update_block.flow_head(net)
+                delta_flow = self.update_block.flow_head(net)
 
-            up_mask = self.update_block.mask(net)
-            # coords1 = coords1 + flow_init + delta_flow
-            # TODO test if flow_init here is excessive
-            coords1 = coords1.detach()
-            coords1 = coords1 + delta_flow
-            flow_up = self.upsample_flow(coords1 - coords0, up_mask)
-            flow_predictions.append(flow_up)
+                up_mask = self.update_block.mask(net)
+                # coords1 = coords1 + flow_init + delta_flow
+                # TODO test if flow_init here is excessive
+                coords1 = coords1.detach()
+                coords1 = coords1 + delta_flow
+                flow_up = self.upsample_flow(coords1 - coords0, up_mask)
+                flow_predictions.append(flow_up)
 
         for itr in range(iters):
             coords1 = coords1.detach()
