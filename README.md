@@ -1,40 +1,24 @@
-# RAFT-initializations
-This repository contains the source code for our paper:
+# FlowFormer: A Transformer Architecture for Optical Flow
+### [Project Page](https://drinkingcoder.github.io/publication/flowformer/) 
 
-[RAFT: Recurrent All Pairs Field Transforms for Optical Flow](https://arxiv.org/pdf/2003.12039.pdf)<br/>
-ECCV 2020 <br/>
-Zachary Teed and Jia Deng<br/>
+> FlowFormer: A Transformer Architecture for Optical Flow    
+> [Zhaoyang Huang](https://drinkingcoder.github.io)<sup>\*</sup>, Xiaoyu Shi<sup>\*</sup>, Chao Zhang, Qiang Wang, Ka Chun Cheung, [Hongwei Qin](http://qinhongwei.com/academic/), [Jifeng Dai](https://jifengdai.org/), [Hongsheng Li](https://www.ee.cuhk.edu.hk/~hsli/)  
+> ECCV 2022  
 
-<img src="assets/RAFT.png">
 
-## Requirements
-The code has been tested with PyTorch 1.6 and Cuda 10.1.
-```Shell
-conda create --name raft
-conda activate raft
-conda install pytorch=1.6.0 torchvision=0.7.0 cudatoolkit=10.1 matplotlib tensorboard scipy tqdm opencv -c pytorch
-```
+<img src="assets/teaser.png">
 
-## Demos
-Pretrained models can be downloaded by running
-```Shell
-./download_models.sh
-```
-or downloaded from [google drive](https://drive.google.com/drive/folders/1sWDsfuZ3Up38EUQt7-JDTT1HcGHuJgvT?usp=sharing)
+## TODO List
+- [x] Code release (2022-8-1)
+- [x] Models release (2022-8-1)
 
-You can demo a trained model on a sequence of frames
-```Shell
-python demo.py --model=models/raft-things.pth --path=demo-frames
-```
-
-## Required Data
-To evaluate/train RAFT, you will need to download the required datasets. 
+## Data Preparation
+Similar to RAFT, to evaluate/train FlowFormer, you will need to download the required datasets. 
 * [FlyingChairs](https://lmb.informatik.uni-freiburg.de/resources/datasets/FlyingChairs.en.html#flyingchairs)
 * [FlyingThings3D](https://lmb.informatik.uni-freiburg.de/resources/datasets/SceneFlowDatasets.en.html)
 * [Sintel](http://sintel.is.tue.mpg.de/)
 * [KITTI](http://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=flow)
 * [HD1K](http://hci-benchmark.iwr.uni-heidelberg.de/) (optional)
-
 
 By default `datasets.py` will search for the datasets in these locations. You can create symbolic links to wherever the datasets were downloaded in the `datasets` folder
 
@@ -55,27 +39,109 @@ By default `datasets.py` will search for the datasets in these locations. You ca
         ├── optical_flow
 ```
 
-## Evaluation
-You can evaluate a trained model using `evaluate.py`
-```Shell
-python evaluate.py --model=models/raft-things.pth --dataset=sintel --mixed_precision
+## Requirements
+```shell
+conda create --name flowformer
+conda activate flowformer
+conda install pytorch=1.6.0 torchvision=0.7.0 cudatoolkit=10.1 matplotlib tensorboard scipy opencv -c pytorch
+pip install yacs loguru einops timm==0.4.12 imageio
 ```
 
 ## Training
-We used the following training schedule in our paper (2 GPUs). Training logs will be written to the `runs` which can be visualized using tensorboard
-```Shell
-./train_standard.sh
+The script will load the config according to the training stage. The trained model will be saved in a directory in `logs` and `checkpoints`. For example, the following script will load the config `configs/default.py`. The trained model will be saved as `logs/xxxx/final` and `checkpoints/chairs.pth`.
+```shell
+python -u train_FlowFormer.py --name chairs --stage chairs --validation chairs
+```
+To finish the entire training schedule, you can run:
+```shell
+./run_train.sh
 ```
 
-If you have a RTX GPU, training can be accelerated using mixed precision. You can expect similiar results in this setting (1 GPU)
+## Models
+We provide [models](https://drive.google.com/drive/folders/1K2dcWxaqOLiQ3PoqRdokrgWsGIf3yBA_?usp=sharing) trained in the four stages. The default path of the models for evaluation is:
 ```Shell
-./train_mixed.sh
+├── checkpoints
+    ├── chairs.pth
+    ├── things.pth
+    ├── sintel.pth
+    ├── kitti.pth
+    ├── flowformer-small.pth 
+    ├── things_kitti.pth
+```
+flowformer-small.pth is a small version of our flowformer. things_kitti.pth is the FlowFormer# introduced in our [supplementary](https://drinkingcoder.github.io/publication/flowformer/images/FlowFormer-supp.pdf), used for KITTI training set evaluation.
+
+## Evaluation
+The model to be evaluated is assigned by the `_CN.model` in the config file.
+
+Evaluating the model on the Sintel training set and the KITTI training set. The corresponding config file is `configs/things_eval.py`.
+```Shell
+# with tiling technique
+python evaluate_FlowFormer_tile.py --eval sintel_validation
+python evaluate_FlowFormer_tile.py --eval kitti_validation --model checkpoints/things_kitti.pth
+# without tiling technique
+python evaluate_FlowFormer.py --dataset sintel
+```
+||with tile|w/o tile|
+|----|-----|--------|
+|clean|0.94|1.01|
+|final|2.33|2.40|
+
+Evaluating the small version model. The corresponding config file is `configs/small_things_eval.py`.
+```Shell
+# with tiling technique
+python evaluate_FlowFormer_tile.py --eval sintel_validation --small
+# without tiling technique
+python evaluate_FlowFormer.py --dataset sintel --small
+```
+||with tile|w/o tile|
+|----|-----|--------|
+|clean|1.21|1.32|
+|final|2.61|2.68|
+
+
+Generating the submission for the Sintel and KITTI benchmarks. The corresponding config file is `configs/submission.py`.
+```Shell
+python evaluate_FlowFormer_tile.py --eval sintel_submission
+python evaluate_FlowFormer_tile.py --eval kitti_submission
+```
+Visualizing the sintel dataset:
+```Shell
+python visualize_flow.py --eval_type sintel --keep_size
+```
+Visualizing an image sequence extracted from a video:
+```Shell
+python visualize_flow.py --eval_type seq
+```
+The default image sequence format is:
+```Shell
+├── demo_data
+    ├── mihoyo
+        ├── 000001.png
+        ├── 000002.png
+        ├── 000003.png
+            .
+            .
+            .
+        ├── 001000.png
 ```
 
-## (Optional) Efficent Implementation
-You can optionally use our alternate (efficent) implementation by compiling the provided cuda extension
-```Shell
-cd alt_cuda_corr && python setup.py install && cd ..
+
+## License
+FlowFormer is released under the Apache License
+
+## Citation
+```bibtex
+@article{huang2022flowformer,
+  title={{FlowFormer}: A Transformer Architecture for Optical Flow},
+  author={Huang, Zhaoyang and Shi, Xiaoyu and Zhang, Chao and Wang, Qiang and Cheung, Ka Chun and Qin, Hongwei and Dai, Jifeng and Li, Hongsheng},
+  journal={{ECCV}},
+  year={2022}
+}
 ```
-and running `demo.py` and `evaluate.py` with the `--alternate_corr` flag Note, this implementation is somewhat slower than all-pairs, but uses significantly less GPU memory during the forward pass.
->>>>>>> 3d7909c (Added initial raft repo)
+
+## Acknowledgement
+
+In this project, we use parts of codes in:
+- [RAFT](https://github.com/princeton-vl/RAFT)
+- [GMA](https://github.com/zacjiang/GMA)
+- [timm](https://github.com/rwightman/pytorch-image-models)
