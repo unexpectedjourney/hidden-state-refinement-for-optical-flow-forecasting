@@ -1,6 +1,5 @@
-import torch
 def build_flowformer(cfg):
-    name = cfg.transformer 
+    name = cfg.transformer
     if name == 'latentcostformer':
         from .LatentCostFormer.transformer import FlowFormer
     else:

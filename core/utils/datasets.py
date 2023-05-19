@@ -1,23 +1,15 @@
 import numpy as np
 import torch
 import torch.utils.data as data
-import torch.nn.functional as F
 
 import os
-import math
 import random
 from glob import glob
 import os.path as osp
 
 from utils import frame_utils
 from utils.augmentor import FlowAugmentor, SparseFlowAugmentor
-#from utils import flow_transforms 
 
-from torchvision.utils import save_image
-
-from utils import flow_viz
-import cv2
-from utils.utils import coords_grid, bilinear_sampler
 
 class FlowDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False):
@@ -37,10 +29,12 @@ class FlowDataset(data.Dataset):
         self.extra_info = []
 
     def __getitem__(self, index):
-        #print(self.flow_list[index])
+        # print(self.flow_list[index])
         if self.is_test:
-            img1 = frame_utils.read_gen(self.image_list[index][0], test=self.is_test)
-            img2 = frame_utils.read_gen(self.image_list[index][1], test=self.is_test)
+            img1 = frame_utils.read_gen(
+                self.image_list[index][0], test=self.is_test)
+            img2 = frame_utils.read_gen(
+                self.image_list[index][1], test=self.is_test)
             img1 = np.array(img1).astype(np.uint8)[..., :3]
             img2 = np.array(img2).astype(np.uint8)[..., :3]
             img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
@@ -64,21 +58,22 @@ class FlowDataset(data.Dataset):
 
         img1 = frame_utils.read_gen(self.image_list[index][0])
         img2 = frame_utils.read_gen(self.image_list[index][1])
-        
+
         flow = np.array(flow).astype(np.float32)
         img1 = np.array(img1).astype(np.uint8)
         img2 = np.array(img2).astype(np.uint8)
         # grayscale images
         if len(img1.shape) == 2:
-            img1 = np.tile(img1[...,None], (1, 1, 3))
-            img2 = np.tile(img2[...,None], (1, 1, 3))
+            img1 = np.tile(img1[..., None], (1, 1, 3))
+            img2 = np.tile(img2[..., None], (1, 1, 3))
         else:
             img1 = img1[..., :3]
             img2 = img2[..., :3]
 
         if self.augmentor is not None:
             if self.sparse:
-                img1, img2, flow, valid = self.augmentor(img1, img2, flow, valid)
+                img1, img2, flow, valid = self.augmentor(
+                    img1, img2, flow, valid)
             else:
                 img1, img2, flow = self.augmentor(img1, img2, flow)
 
@@ -92,14 +87,14 @@ class FlowDataset(data.Dataset):
             valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
         return img1, img2, flow, valid.float()
 
-
     def __rmul__(self, v):
         self.flow_list = v * self.flow_list
         self.image_list = v * self.image_list
         return self
-        
+
     def __len__(self):
         return len(self.image_list)
+
 
 class MpiSintel_submission(FlowDataset):
     def __init__(self, aug_params=None, split='test', root='datasets/Sintel', dstype='clean'):
@@ -113,11 +108,13 @@ class MpiSintel_submission(FlowDataset):
         for scene in os.listdir(image_root):
             image_list = sorted(glob(osp.join(image_root, scene, '*.png')))
             for i in range(len(image_list)-1):
-                self.image_list += [ [image_list[i], image_list[i+1]] ]
-                self.extra_info += [ (scene, i) ] # scene and frame_id
+                self.image_list += [[image_list[i], image_list[i+1]]]
+                self.extra_info += [(scene, i)]  # scene and frame_id
 
             if split != 'test':
-                self.flow_list += sorted(glob(osp.join(flow_root, scene, '*.flo')))
+                self.flow_list += sorted(glob(osp.join(flow_root,
+                                         scene, '*.flo')))
+
 
 class MpiSintel(FlowDataset):
     def __init__(self, aug_params=None, split='training', root='datasets/Sintel', dstype='clean'):
@@ -130,13 +127,13 @@ class MpiSintel(FlowDataset):
             images = f.readlines()
             for img1, img2 in zip(images[0::2], images[1::2]):
                 self.image_list.append([root+img1.strip(), root+img2.strip()])
-        
+
         self.flow_list = []
         with open("./flow_dataset/Sintel/Sintel_"+dstype+"_flo.txt") as f:
             flows = f.readlines()
             for flow in flows:
                 self.flow_list.append(root+flow.strip())
-        
+
         assert (len(self.image_list) == len(self.flow_list))
 
         self.extra_info = []
@@ -172,7 +169,7 @@ class FlyingChairs(FlowDataset):
         with open("./flow_dataset/flying_chairs/flyingchairs_flo.txt") as f:
             flows = f.readlines()
             flows = [root+flo.strip() for flo in flows]
-        
+
         # images = sorted(glob(osp.join(root, '*.ppm')))
         # flows = sorted(glob(osp.join(root, '*.flo')))
         assert (len(images)//2 == len(flows))
@@ -180,9 +177,9 @@ class FlyingChairs(FlowDataset):
         split_list = np.loadtxt('chairs_split.txt', dtype=np.int32)
         for i in range(len(flows)):
             xid = split_list[i]
-            if (split=='training' and xid==1) or (split=='validation' and xid==2):
-                self.flow_list += [ flows[i] ]
-                self.image_list += [ [images[2*i], images[2*i+1]] ]
+            if (split == 'training' and xid == 1) or (split == 'validation' and xid == 2):
+                self.flow_list += [flows[i]]
+                self.image_list += [[images[2*i], images[2*i+1]]]
 
 
 class FlyingThings3D(FlowDataset):
@@ -220,7 +217,7 @@ class FlyingThings3D(FlowDataset):
         #                 elif direction == 'into_past':
         #                     self.image_list += [ [images[i+1], images[i]] ]
         #                     self.flow_list += [ flows[i+1] ]
-      
+
 
 class KITTI(FlowDataset):
     def __init__(self, aug_params=None, split='training', root='datasets/KITTI'):
@@ -260,6 +257,7 @@ class KITTI(FlowDataset):
         # if split == 'training':
         #     self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
 
+
 class AutoFlow(data.Dataset):
     def __init__(self, num_steps, crop_size, log_dir, root='datasets/'):
         super(AutoFlow, self).__init__()
@@ -275,7 +273,7 @@ class AutoFlow(data.Dataset):
             flows = f.readlines()
             for flow in flows:
                 self.flow_list.append(root+flow.strip())
-        
+
         self.crop_size = crop_size
         self.log_dir = log_dir
         self.num_steps = num_steps
@@ -292,15 +290,17 @@ class AutoFlow(data.Dataset):
         self.flow_list = v * self.flow_list
         self.image_list = v * self.image_list
         return self
-        
+
     def __len__(self):
         return len(self.image_list) * 100
-    
+
     def __getitem__(self, index):
-        #print(self.flow_list[index])
+        # print(self.flow_list[index])
         if self.is_test:
-            img1 = frame_utils.read_gen(self.image_list[index][0], test=self.is_test)
-            img2 = frame_utils.read_gen(self.image_list[index][1], test=self.is_test)
+            img1 = frame_utils.read_gen(
+                self.image_list[index][0], test=self.is_test)
+            img2 = frame_utils.read_gen(
+                self.image_list[index][1], test=self.is_test)
             img1 = np.array(img1).astype(np.uint8)[..., :3]
             img2 = np.array(img2).astype(np.uint8)[..., :3]
             img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
@@ -316,12 +316,12 @@ class AutoFlow(data.Dataset):
                 self.init_seed = True
         index = index % len(self.image_list)
         valid = None
-            
+
         flow = frame_utils.read_gen(self.flow_list[index])
 
         img1 = frame_utils.read_gen(self.image_list[index][0])
         img2 = frame_utils.read_gen(self.image_list[index][1])
-        
+
         flow = np.array(flow).astype(np.float32)
         # For PWC-style augmentation, pixel values are in [0, 1]
         img1 = np.array(img1).astype(np.uint8) / 255.0
@@ -329,53 +329,55 @@ class AutoFlow(data.Dataset):
 
         # grayscale images
         if len(img1.shape) == 2:
-            img1 = np.tile(img1[...,None], (1, 1, 3))
-            img2 = np.tile(img2[...,None], (1, 1, 3))
+            img1 = np.tile(img1[..., None], (1, 1, 3))
+            img2 = np.tile(img2[..., None], (1, 1, 3))
         else:
             img1 = img1[..., :3]
             img2 = img2[..., :3]
-        
+
         iter_counts = self.iter_counts
         self.iter_counts = self.iter_counts + 1
         print(self.iter_counts)
         th, tw = self.crop_size
-        schedule = [0.5, 1., self.num_steps]  # initial coeff, final_coeff, half life
+        # initial coeff, final_coeff, half life
+        schedule = [0.5, 1., self.num_steps]
         schedule_coeff = schedule[0] + (schedule[1] - schedule[0]) * \
-          (2/(1+np.exp(-1.0986*iter_counts/schedule[2])) - 1)
-        
+            (2/(1+np.exp(-1.0986*iter_counts/schedule[2])) - 1)
+
         co_transform = flow_transforms.Compose([
-        flow_transforms.Scale(self.scale, order=self.order),
-        flow_transforms.SpatialAug([th,tw],scale=[0.4,0.03,0.2],
-                                            rot=[0.4,0.03],
-                                            trans=[0.4,0.03],
-                                            squeeze=[0.3,0.], schedule_coeff=schedule_coeff, order=self.order, black=self.black),
-        flow_transforms.PCAAug(schedule_coeff=schedule_coeff),
-        flow_transforms.ChromaticAug( schedule_coeff=schedule_coeff, noise=self.noise),
+            flow_transforms.Scale(self.scale, order=self.order),
+            flow_transforms.SpatialAug([th, tw], scale=[0.4, 0.03, 0.2],
+                                       rot=[0.4, 0.03],
+                                       trans=[0.4, 0.03],
+                                       squeeze=[0.3, 0.], schedule_coeff=schedule_coeff, order=self.order, black=self.black),
+            flow_transforms.PCAAug(schedule_coeff=schedule_coeff),
+            flow_transforms.ChromaticAug(
+                schedule_coeff=schedule_coeff, noise=self.noise),
         ])
-        
-        flow = np.concatenate([flow, np.ones((flow.shape[0], flow.shape[1], 1))], axis=-1)
+
+        flow = np.concatenate(
+            [flow, np.ones((flow.shape[0], flow.shape[1], 1))], axis=-1)
         augmented, flow_valid = co_transform([img1, img2], flow)
-        flow = flow_valid[:,:,:2]
-        valid = flow_valid[:,:,2:3]
+        flow = flow_valid[:, :, :2]
+        valid = flow_valid[:, :, 2:3]
 
         img1 = augmented[0]
         img2 = augmented[1]
-        if np.random.binomial(1,0.5):
+        if np.random.binomial(1, 0.5):
             #sx = int(np.random.uniform(25,100))
             #sy = int(np.random.uniform(25,100))
-            sx = int(np.random.uniform(50,125))
-            sy = int(np.random.uniform(50,125))
+            sx = int(np.random.uniform(50, 125))
+            sy = int(np.random.uniform(50, 125))
             #sx = int(np.random.uniform(50,150))
             #sy = int(np.random.uniform(50,150))
-            cx = int(np.random.uniform(sx,img2.shape[0]-sx))
-            cy = int(np.random.uniform(sy,img2.shape[1]-sy))
-            img2[cx-sx:cx+sx,cy-sy:cy+sy] = np.mean(np.mean(img2,0),0)[np.newaxis,np.newaxis]
-
+            cx = int(np.random.uniform(sx, img2.shape[0]-sx))
+            cy = int(np.random.uniform(sy, img2.shape[1]-sy))
+            img2[cx-sx:cx+sx, cy-sy:cy +
+                 sy] = np.mean(np.mean(img2, 0), 0)[np.newaxis, np.newaxis]
 
         img1 = torch.from_numpy(img1).permute(2, 0, 1).float()
         img2 = torch.from_numpy(img2).permute(2, 0, 1).float()
         flow = torch.from_numpy(flow).permute(2, 0, 1).float()
-        
 
         if valid is not None:
             valid = torch.from_numpy(valid).permute(2, 0, 1).float()
@@ -384,9 +386,6 @@ class AutoFlow(data.Dataset):
             valid = (flow[0].abs() < 1000) & (flow[1].abs() < 1000)
 
         return img1 * 255, img2 * 255, flow, valid.float()
-
-    
-    
 
 
 class HD1K(FlowDataset):
@@ -420,68 +419,73 @@ class HD1K(FlowDataset):
         #     seq_ix += 1
 
 
-
 def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
     """ Create the data loader for the corresponding trainign set """
 
     if args.stage == 'chairs':
         if hasattr(args.percostformer, 'pwc_aug') and args.percostformer.pwc_aug:
-            aug_params = {'crop_size': args.image_size, 'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True, 'pwc_aug': True}
+            aug_params = {'crop_size': args.image_size, 'min_scale': -
+                          0.1, 'max_scale': 1.0, 'do_flip': True, 'pwc_aug': True}
         else:
-            aug_params = {'crop_size': args.image_size, 'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True}
+            aug_params = {'crop_size': args.image_size,
+                          'min_scale': -0.1, 'max_scale': 1.0, 'do_flip': True}
         train_dataset = FlyingChairs(aug_params, split='training')
-    
+
     elif args.stage == 'things':
-        aug_params = {'crop_size': args.image_size, 'min_scale': -0.4, 'max_scale': 0.8, 'do_flip': True}
+        aug_params = {'crop_size': args.image_size,
+                      'min_scale': -0.4, 'max_scale': 0.8, 'do_flip': True}
         clean_dataset = FlyingThings3D(aug_params, dstype='frames_cleanpass')
         final_dataset = FlyingThings3D(aug_params, dstype='frames_finalpass')
         train_dataset = clean_dataset + final_dataset
 
     elif args.stage == 'sintel':
-        aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.6, 'do_flip': True}
+        aug_params = {'crop_size': args.image_size,
+                      'min_scale': -0.2, 'max_scale': 0.6, 'do_flip': True}
         things = FlyingThings3D(aug_params, dstype='frames_cleanpass')
         sintel_clean = MpiSintel(aug_params, split='training', dstype='clean')
-        sintel_final = MpiSintel(aug_params, split='training', dstype='final')        
+        sintel_final = MpiSintel(aug_params, split='training', dstype='final')
 
         if TRAIN_DS == 'C+T+K+S+H':
-            kitti = KITTI({'crop_size': args.image_size, 'min_scale': -0.3, 'max_scale': 0.5, 'do_flip': True})
-            hd1k = HD1K({'crop_size': args.image_size, 'min_scale': -0.5, 'max_scale': 0.2, 'do_flip': True})
-            train_dataset = 100*sintel_clean + 100*sintel_final + 200*kitti + 5*hd1k + things
+            kitti = KITTI({'crop_size': args.image_size,
+                          'min_scale': -0.3, 'max_scale': 0.5, 'do_flip': True})
+            hd1k = HD1K({'crop_size': args.image_size,
+                        'min_scale': -0.5, 'max_scale': 0.2, 'do_flip': True})
+            train_dataset = 100*sintel_clean + 100 * \
+                sintel_final + 200*kitti + 5*hd1k + things
 
         elif TRAIN_DS == 'C+T+K/S':
             train_dataset = 100*sintel_clean + 100*sintel_final + things
 
     elif args.stage == 'kitti':
-        aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False}
+        aug_params = {'crop_size': args.image_size,
+                      'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False}
         train_dataset = KITTI(aug_params, split='training')
 
     elif args.stage == 'autoflow-pwcaug':
-        aug_params = {'num_steps': args.trainer.num_steps, 'crop_size': args.image_size, 'log_dir': args.log_dir}
+        aug_params = {'num_steps': args.trainer.num_steps,
+                      'crop_size': args.image_size, 'log_dir': args.log_dir}
         train_dataset = AutoFlow(**aug_params)
 
-    train_loader = data.DataLoader(train_dataset, batch_size=args.batch_size, 
-        pin_memory=False, shuffle=True, num_workers=args.batch_size, drop_last=True)
+    train_loader = data.DataLoader(train_dataset, batch_size=args.batch_size,
+                                   pin_memory=False, shuffle=True, num_workers=args.batch_size, drop_last=True)
 
     print('Training with %d image pairs' % len(train_dataset))
     return train_loader
 
+
 if __name__ == "__main__":
-    aug_params = {'crop_size': [400, 720], 'min_scale': -0.2, 'max_scale': 0, 'do_flip': True}
+    aug_params = {'crop_size': [400, 720],
+                  'min_scale': -0.2, 'max_scale': 0, 'do_flip': True}
     aug_params['min_scale'] = -0.2
     aug_params['min_stretch'] = -0.2
     sintel_clean = MpiSintel(aug_params, split='training', dstype='clean')
 
-    train_loader = data.DataLoader(sintel_clean, batch_size=1, 
-        pin_memory=False, shuffle=True, num_workers=1, drop_last=True)
+    train_loader = data.DataLoader(sintel_clean, batch_size=1,
+                                   pin_memory=False, shuffle=True, num_workers=1, drop_last=True)
 
     for i_batch, data_blob in enumerate(train_loader):
         image1, image2, flow, valid = [x for x in data_blob]
         print(i_batch, image1.shape)
-        
-
-        
 
         # if i_batch==5:
         #     exit()
-        
-        

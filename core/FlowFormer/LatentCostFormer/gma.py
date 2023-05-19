@@ -13,7 +13,8 @@ class RelPosEmb(nn.Module):
         self.rel_height = nn.Embedding(2 * max_pos_size - 1, dim_head)
         self.rel_width = nn.Embedding(2 * max_pos_size - 1, dim_head)
 
-        deltas = torch.arange(max_pos_size).view(1, -1) - torch.arange(max_pos_size).view(-1, 1)
+        deltas = torch.arange(max_pos_size).view(
+            1, -1) - torch.arange(max_pos_size).view(-1, 1)
         rel_ind = deltas + max_pos_size - 1
         self.register_buffer('rel_ind', rel_ind)
 
@@ -25,7 +26,8 @@ class RelPosEmb(nn.Module):
         height_emb = rearrange(height_emb, '(x u) d -> x u () d', x=h)
         width_emb = rearrange(width_emb, '(y v) d -> y () v d', y=w)
 
-        height_score = einsum('b h x y d, x u v d -> b h x y u v', q, height_emb)
+        height_score = einsum(
+            'b h x y d, x u v d -> b h x y u v', q, height_emb)
         width_score = einsum('b h x y d, y u v d -> b h x y u v', q, width_emb)
 
         return height_score + width_score
@@ -37,9 +39,9 @@ class Attention(nn.Module):
         *,
         args,
         dim,
-        max_pos_size = 100,
-        heads = 4,
-        dim_head = 128,
+        max_pos_size=100,
+        heads=4,
+        dim_head=128,
     ):
         super().__init__()
         self.args = args
@@ -56,7 +58,8 @@ class Attention(nn.Module):
 
         q, k = self.to_qk(fmap).chunk(2, dim=1)
 
-        q, k = map(lambda t: rearrange(t, 'b (h d) x y -> b h x y d', h=heads), (q, k))
+        q, k = map(lambda t: rearrange(
+            t, 'b (h d) x y -> b h x y d', h=heads), (q, k))
         q = self.scale * q
 
         # if self.args.position_only:
@@ -81,8 +84,8 @@ class Aggregate(nn.Module):
         self,
         args,
         dim,
-        heads = 4,
-        dim_head = 128,
+        heads=4,
+        dim_head=128,
     ):
         super().__init__()
         self.args = args
