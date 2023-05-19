@@ -12,6 +12,8 @@ from configs.things_eval import get_cfg as get_things_cfg
 
 # from FlowFormer import FlowFormer
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 @torch.no_grad()
 def validate_chairs(model):
@@ -22,8 +24,8 @@ def validate_chairs(model):
     val_dataset = datasets.FlyingChairs(split='validation')
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, _ = val_dataset[val_id]
-        image1 = image1[None].cuda()
-        image2 = image2[None].cuda()
+        image1 = image1[None].to(DEVICE)
+        image2 = image2[None].to(DEVICE)
         flow_pre, _ = model(image1, image2)
 
         epe = torch.sum((flow_pre[0].cpu() - flow_gt)**2, dim=0).sqrt()
@@ -45,8 +47,8 @@ def validate_sintel(model):
 
         for val_id in range(len(val_dataset)):
             image1, image2, flow_gt, _ = val_dataset[val_id]
-            image1 = image1[None].cuda()
-            image2 = image2[None].cuda()
+            image1 = image1[None].to(DEVICE)
+            image2 = image2[None].to(DEVICE)
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
 
@@ -83,7 +85,7 @@ def create_sintel_submission(model, output_path='sintel_submission'):
             if (test_id+1) % 100 == 0:
                 print(f"{test_id} / {len(test_dataset)}")
             image1, image2, (sequence, frame) = test_dataset[test_id]
-            image1, image2 = image1[None].cuda(), image2[None].cuda()
+            image1, image2 = image1[None].to(DEVICE), image2[None].to(DEVICE)
 
             padder = InputPadder(image1.shape)
             image1, image2 = padder.pad(image1, image2)
@@ -111,8 +113,8 @@ def validate_kitti(model):
     out_list, epe_list = [], []
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, valid_gt = val_dataset[val_id]
-        image1 = image1[None].cuda()
-        image2 = image2[None].cuda()
+        image1 = image1[None].to(DEVICE)
+        image2 = image2[None].to(DEVICE)
 
         padder = InputPadder(image1.shape)
         image1, image2 = padder.pad(image1, image2)
@@ -164,7 +166,7 @@ if __name__ == '__main__':
 
     print(args)
 
-    model.cuda()
+    model.to(DEVICE)
     model.eval()
 
     # create_sintel_submission(model.module, warm_start=True)

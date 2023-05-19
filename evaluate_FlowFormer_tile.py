@@ -17,6 +17,7 @@ from core.utils.utils import InputPadder
 import imageio
 
 TRAIN_SIZE = [432, 960]
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class InputPadder:
@@ -72,7 +73,7 @@ def compute_weight(hws, image_shape, patch_size=TRAIN_SIZE, sigma=1.0, wtype='ga
     weights = torch.zeros(1, patch_num, *image_shape)
     for idx, (h, w) in enumerate(hws):
         weights[:, idx, h:h+patch_size[0], w:w+patch_size[1]] = weights_hw
-    weights = weights.cuda()
+    weights = weights.to(DEVICE)
     patch_weights = []
     for idx, (h, w) in enumerate(hws):
         patch_weights.append(
@@ -101,7 +102,7 @@ def create_sintel_submission(model, output_path='sintel_submission_multi8_768', 
                 print(f"{test_id} / {len(test_dataset)}")
                 # break
             image1, image2, (sequence, frame) = test_dataset[test_id]
-            image1, image2 = image1[None].cuda(), image2[None].cuda()
+            image1, image2 = image1[None].to(DEVICE), image2[None].to(DEVICE)
 
             flows = 0
             flow_count = 0
@@ -160,7 +161,7 @@ def create_kitti_submission(model, output_path='kitti_submission', sigma=0.05):
 
         # padding the image to height of 432
         padder = InputPadder(image1.shape, mode='kitti432')
-        image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+        image1, image2 = padder.pad(image1[None].to(DEVICE), image2[None].to(DEVICE))
 
         flows = 0
         flow_count = 0
@@ -216,7 +217,7 @@ def validate_kitti(model, sigma=0.05):
             weights = compute_weight(hws, IMAGE_SIZE, TRAIN_SIZE, sigma)
 
         padder = InputPadder(image1.shape, mode='kitti376')
-        image1, image2 = padder.pad(image1[None].cuda(), image2[None].cuda())
+        image1, image2 = padder.pad(image1[None].to(DEVICE), image2[None].to(DEVICE))
 
         flows = 0
         flow_count = 0
@@ -275,8 +276,8 @@ def validate_sintel(model, sigma=0.05):
                 print(val_id)
 
             image1, image2, flow_gt, _ = val_dataset[val_id]
-            image1 = image1[None].cuda()
-            image2 = image2[None].cuda()
+            image1 = image1[None].to(DEVICE)
+            image2 = image2[None].to(DEVICE)
 
             flows = 0
             flow_count = 0
@@ -350,7 +351,7 @@ if __name__ == '__main__':
     model = torch.nn.DataParallel(build_flowformer(cfg))
     model.load_state_dict(torch.load(cfg.model))
 
-    model.cuda()
+    model.to(DEVICE)
     model.eval()
 
     exp_func(model.module)

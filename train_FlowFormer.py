@@ -42,6 +42,7 @@ except:
             pass
 
 # torch.autograd.set_detect_anomaly(True)
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def count_parameters(model):
@@ -56,7 +57,7 @@ def train(cfg):
         print("[Loading ckpt from {}]".format(cfg.restore_ckpt))
         model.load_state_dict(torch.load(cfg.restore_ckpt), strict=True)
 
-    model.cuda()
+    model.to(DEVICE)
     model.train()
 
     train_loader = datasets.fetch_dataloader(cfg)
@@ -73,14 +74,16 @@ def train(cfg):
 
         for i_batch, data_blob in enumerate(train_loader):
             optimizer.zero_grad()
-            image1, image2, flow, valid = [x.cuda() for x in data_blob]
+            image1, image2, flow, valid = [x.to(DEVICE) for x in data_blob]
 
             if cfg.add_noise:
                 stdv = np.random.uniform(0.0, 5.0)
-                image1 = (image1 + stdv * torch.randn(*
-                          image1.shape).cuda()).clamp(0.0, 255.0)
-                image2 = (image2 + stdv * torch.randn(*
-                          image2.shape).cuda()).clamp(0.0, 255.0)
+                image1 = (
+                    image1 + stdv * torch.randn(*image1.shape).to(DEVICE)
+                ).clamp(0.0, 255.0)
+                image2 = (
+                    image2 + stdv * torch.randn(*image2.shape).to(DEVICE)
+                ).clamp(0.0, 255.0)
 
             output = {}
             flow_predictions = model(image1, image2, output)
