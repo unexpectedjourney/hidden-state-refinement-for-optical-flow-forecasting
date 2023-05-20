@@ -1,24 +1,15 @@
 from __future__ import print_function, division
-import sys
-# sys.path.append('core')
 
 import argparse
 import os
-import cv2
-import time
 import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
+from tqdm import tqdm
 
-from torch.utils.data import DataLoader
-from core import optimizer
 import evaluate_FlowFormer as evaluate
-import evaluate_FlowFormer_tile as evaluate_tile
 import core.datasets as datasets
 from core.loss import sequence_loss
 from core.optimizer import fetch_optimizer
@@ -38,20 +29,26 @@ except:
     class GradScaler:
         def __init__(self):
             pass
+
         def scale(self, loss):
             return loss
+
         def unscale_(self, optimizer):
             pass
+
         def step(self, optimizer):
             optimizer.step()
+
         def update(self):
             pass
 
-#torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 
 def train(cfg):
     model = nn.DataParallel(build_flowformer(cfg))
@@ -61,7 +58,7 @@ def train(cfg):
         print("[Loading ckpt from {}]".format(cfg.restore_ckpt))
         model.load_state_dict(torch.load(cfg.restore_ckpt), strict=True)
 
-    model.cuda()
+    model.to(DEVICE)
     model.train()
 
     train_loader = datasets.fetch_dataloader(cfg)
@@ -76,30 +73,50 @@ def train(cfg):
     should_keep_training = True
     while should_keep_training:
 
-        for i_batch, data_blob in enumerate(train_loader):
-            optimizer.zero_grad()
-            image1, image2, flow, valid = [x.cuda() for x in data_blob]
+        for i_batch, data_blob in enumerate(tqdm(train_loader)):
+            imgs, flows, valids = data_blob
 
-            if cfg.add_noise:
-                stdv = np.random.uniform(0.0, 5.0)
-                image1 = (image1 + stdv * torch.randn(*image1.shape).cuda()).clamp(0.0, 255.0)
-                image2 = (image2 + stdv * torch.randn(*image2.shape).cuda()).clamp(0.0, 255.0)
+            for j in range(imgs.shape[1]-1):
+                optimizer.zero_grad()
+                image1 = imgs[:, j, ...]
+                image2 = imgs[:, j+1, ...]
+                flow = flows[:, j, ...]
+                valid = valids[:, j, ...]
 
-            output = {}
-            flow_predictions = model(image1, image2, output)
-            loss, metrics = sequence_loss(flow_predictions, flow, valid, cfg)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.trainer.clip)
-            
-            scaler.step(optimizer)
-            scheduler.step()
-            scaler.update()
+                image1 = image1.to(DEVICE)
+                image2 = image2.to(DEVICE)
+                flow = flow.to(DEVICE)
+                valid = valid.to(DEVICE)
 
-            metrics.update(output)
-            logger.push(metrics)
+                if cfg.add_noise:
+                    stdv = np.random.uniform(0.0, 5.0)
+                    image1 = (
+                        image1 + stdv * torch.randn(*image1.shape).to(DEVICE)
+                    ).clamp(0.0, 255.0)
+                    image2 = (
+                        image2 + stdv * torch.randn(*image2.shape).to(DEVICE)
+                    ).clamp(0.0, 255.0)
 
-            ### change evaluate to functions
+                output = {}
+                flow_predictions = model(image1, image2, output)
+                loss, metrics = sequence_loss(
+                    flow_predictions, flow, valid, cfg
+                )
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(),
+                    cfg.trainer.clip
+                )
+
+                scaler.step(optimizer)
+                scheduler.step()
+                scaler.update()
+
+                metrics.update(output)
+                logger.push(metrics)
+
+            # change evaluate to functions
 
             if total_steps % cfg.val_freq == cfg.val_freq - 1:
                 PATH = '%s/%d_%s.pth' % (cfg.log_dir, total_steps+1, cfg.name)
@@ -115,9 +132,9 @@ def train(cfg):
                         results.update(evaluate.validate_kitti(model.module))
 
                 logger.write_dict(results)
-                
+
                 model.train()
-            
+
             total_steps += 1
 
             if total_steps > cfg.trainer.num_steps:
@@ -133,13 +150,17 @@ def train(cfg):
 
     return PATH
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', default='flowformer', help="name your experiment")
-    parser.add_argument('--stage', help="determines which dataset to use for training") 
+    parser.add_argument('--name', default='flowformer',
+                        help="name your experiment")
+    parser.add_argument(
+        '--stage', help="determines which dataset to use for training")
     parser.add_argument('--validation', type=str, nargs='+')
 
-    parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
+    parser.add_argument('--mixed_precision',
+                        action='store_true', help='use mixed precision')
 
     args = parser.parse_args()
 

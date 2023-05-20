@@ -2,12 +2,13 @@ import torch
 
 MAX_FLOW = 400
 
+
 def sequence_loss(flow_preds, flow_gt, valid, cfg):
     """ Loss function defined over sequence of flow predictions """
 
     gamma = cfg.gamma
     max_flow = cfg.max_flow
-    n_predictions = len(flow_preds)    
+    n_predictions = len(flow_preds)
     flow_loss = 0.0
     flow_gt_thresholds = [5, 10, 20]
 
@@ -35,9 +36,7 @@ def sequence_loss(flow_preds, flow_gt, valid, cfg):
     for t in flow_gt_thresholds:
         e = epe[flow_gt_length < t]
         metrics.update({
-                f"{t}-th-5px": (e < 5).float().mean().item()
+            f"{t}-th-5px": (e < 5).float().mean().item()
         })
 
-
     return flow_loss, metrics
-

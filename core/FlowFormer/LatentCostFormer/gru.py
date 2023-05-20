@@ -1,6 +1,8 @@
+from .gma import Aggregate
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class FlowHead(nn.Module):
     def __init__(self, input_dim=128, hidden_dim=256):
@@ -11,6 +13,7 @@ class FlowHead(nn.Module):
 
     def forward(self, x):
         return self.conv2(self.relu(self.conv1(x)))
+
 
 class ConvGRU(nn.Module):
     def __init__(self, hidden_dim=128, input_dim=192+128):
@@ -29,34 +32,41 @@ class ConvGRU(nn.Module):
         h = (1-z) * h + z * q
         return h
 
+
 class SepConvGRU(nn.Module):
     def __init__(self, hidden_dim=128, input_dim=192+128):
         super(SepConvGRU, self).__init__()
-        self.convz1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convr1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convq1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
+        self.convz1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
+        self.convr1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
+        self.convq1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
 
-        self.convz2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convr2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convq2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-
+        self.convz2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
+        self.convr2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
+        self.convq2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
 
     def forward(self, h, x):
         # horizontal
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz1(hx))
         r = torch.sigmoid(self.convr1(hx))
-        q = torch.tanh(self.convq1(torch.cat([r*h, x], dim=1)))        
+        q = torch.tanh(self.convq1(torch.cat([r*h, x], dim=1)))
         h = (1-z) * h + z * q
 
         # vertical
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz2(hx))
         r = torch.sigmoid(self.convr2(hx))
-        q = torch.tanh(self.convq2(torch.cat([r*h, x], dim=1)))       
+        q = torch.tanh(self.convq2(torch.cat([r*h, x], dim=1)))
         h = (1-z) * h + z * q
 
         return h
+
 
 class BasicMotionEncoder(nn.Module):
     def __init__(self, args):
@@ -82,6 +92,7 @@ class BasicMotionEncoder(nn.Module):
         out = F.relu(self.conv(cor_flo))
         return torch.cat([out, flow], dim=1)
 
+
 class BasicUpdateBlock(nn.Module):
     def __init__(self, args, hidden_dim=128, input_dim=128):
         super(BasicUpdateBlock, self).__init__()
@@ -106,13 +117,14 @@ class BasicUpdateBlock(nn.Module):
         mask = .25 * self.mask(net)
         return net, mask, delta_flow
 
-from .gma import Aggregate
+
 class GMAUpdateBlock(nn.Module):
     def __init__(self, args, hidden_dim=128):
         super().__init__()
         self.args = args
         self.encoder = BasicMotionEncoder(args)
-        self.gru = SepConvGRU(hidden_dim=hidden_dim, input_dim=128+hidden_dim+hidden_dim)
+        self.gru = SepConvGRU(hidden_dim=hidden_dim,
+                              input_dim=128+hidden_dim+hidden_dim)
         self.flow_head = FlowHead(hidden_dim, hidden_dim=256)
 
         self.mask = nn.Sequential(
@@ -120,12 +132,14 @@ class GMAUpdateBlock(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(256, 64*9, 1, padding=0))
 
-        self.aggregator = Aggregate(args=self.args, dim=128, dim_head=128, heads=1)
+        self.aggregator = Aggregate(
+            args=self.args, dim=128, dim_head=128, heads=1)
 
     def forward(self, net, inp, corr, flow, attention):
         motion_features = self.encoder(flow, corr)
         motion_features_global = self.aggregator(attention, motion_features)
-        inp_cat = torch.cat([inp, motion_features, motion_features_global], dim=1)
+        inp_cat = torch.cat(
+            [inp, motion_features, motion_features_global], dim=1)
 
         # Attentional update
         net = self.gru(net, inp_cat)

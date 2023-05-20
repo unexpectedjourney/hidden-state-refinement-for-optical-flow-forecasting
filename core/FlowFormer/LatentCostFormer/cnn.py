@@ -1,32 +1,38 @@
+from .twins import Block, CrossBlock
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import Mlp, DropPath, to_2tuple, trunc_normal_
+from timm.models.layers import trunc_normal_
 import math
 import numpy as np
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn='group', stride=1):
         super(ResidualBlock, self).__init__()
-  
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, padding=1, stride=stride)
+
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, padding=1, stride=stride)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
 
         num_groups = planes // 8
 
         if norm_fn == 'group':
-            self.norm1 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
-            self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
+            self.norm1 = nn.GroupNorm(
+                num_groups=num_groups, num_channels=planes)
+            self.norm2 = nn.GroupNorm(
+                num_groups=num_groups, num_channels=planes)
             if not stride == 1:
-                self.norm3 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
-        
+                self.norm3 = nn.GroupNorm(
+                    num_groups=num_groups, num_channels=planes)
+
         elif norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(planes)
             self.norm2 = nn.BatchNorm2d(planes)
             if not stride == 1:
                 self.norm3 = nn.BatchNorm2d(planes)
-        
+
         elif norm_fn == 'instance':
             self.norm1 = nn.InstanceNorm2d(planes)
             self.norm2 = nn.InstanceNorm2d(planes)
@@ -41,11 +47,10 @@ class ResidualBlock(nn.Module):
 
         if stride == 1:
             self.downsample = None
-        
-        else:    
+
+        else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm3)
-
 
     def forward(self, x):
         y = x
@@ -58,32 +63,36 @@ class ResidualBlock(nn.Module):
         return self.relu(x+y)
 
 
-
 class BottleneckBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn='group', stride=1):
         super(BottleneckBlock, self).__init__()
-  
+
         self.conv1 = nn.Conv2d(in_planes, planes//4, kernel_size=1, padding=0)
-        self.conv2 = nn.Conv2d(planes//4, planes//4, kernel_size=3, padding=1, stride=stride)
+        self.conv2 = nn.Conv2d(planes//4, planes//4,
+                               kernel_size=3, padding=1, stride=stride)
         self.conv3 = nn.Conv2d(planes//4, planes, kernel_size=1, padding=0)
         self.relu = nn.ReLU(inplace=True)
 
         num_groups = planes // 8
 
         if norm_fn == 'group':
-            self.norm1 = nn.GroupNorm(num_groups=num_groups, num_channels=planes//4)
-            self.norm2 = nn.GroupNorm(num_groups=num_groups, num_channels=planes//4)
-            self.norm3 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
+            self.norm1 = nn.GroupNorm(
+                num_groups=num_groups, num_channels=planes//4)
+            self.norm2 = nn.GroupNorm(
+                num_groups=num_groups, num_channels=planes//4)
+            self.norm3 = nn.GroupNorm(
+                num_groups=num_groups, num_channels=planes)
             if not stride == 1:
-                self.norm4 = nn.GroupNorm(num_groups=num_groups, num_channels=planes)
-        
+                self.norm4 = nn.GroupNorm(
+                    num_groups=num_groups, num_channels=planes)
+
         elif norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(planes//4)
             self.norm2 = nn.BatchNorm2d(planes//4)
             self.norm3 = nn.BatchNorm2d(planes)
             if not stride == 1:
                 self.norm4 = nn.BatchNorm2d(planes)
-        
+
         elif norm_fn == 'instance':
             self.norm1 = nn.InstanceNorm2d(planes//4)
             self.norm2 = nn.InstanceNorm2d(planes//4)
@@ -100,11 +109,10 @@ class BottleneckBlock(nn.Module):
 
         if stride == 1:
             self.downsample = None
-        
-        else:    
+
+        else:
             self.downsample = nn.Sequential(
                 nn.Conv2d(in_planes, planes, kernel_size=1, stride=stride), self.norm4)
-
 
     def forward(self, x):
         y = x
@@ -117,6 +125,7 @@ class BottleneckBlock(nn.Module):
 
         return self.relu(x+y)
 
+
 class BasicEncoder(nn.Module):
     def __init__(self, input_dim=3, output_dim=128, norm_fn='batch', dropout=0.0):
         super(BasicEncoder, self).__init__()
@@ -125,7 +134,7 @@ class BasicEncoder(nn.Module):
 
         if self.norm_fn == 'group':
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=64 * mul)
-            
+
         elif self.norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(64 * mul)
 
@@ -135,7 +144,8 @@ class BasicEncoder(nn.Module):
         elif self.norm_fn == 'none':
             self.norm1 = nn.Sequential()
 
-        self.conv1 = nn.Conv2d(input_dim, 64 * mul, kernel_size=7, stride=2, padding=3)
+        self.conv1 = nn.Conv2d(input_dim, 64 * mul,
+                               kernel_size=7, stride=2, padding=3)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.in_planes = 64 * mul
@@ -152,7 +162,8 @@ class BasicEncoder(nn.Module):
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode='fan_out', nonlinearity='relu')
             elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
@@ -160,7 +171,8 @@ class BasicEncoder(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, dim, stride=1):
-        layer1 = ResidualBlock(self.in_planes, dim, self.norm_fn, stride=stride)
+        layer1 = ResidualBlock(self.in_planes, dim,
+                               self.norm_fn, stride=stride)
         layer2 = ResidualBlock(dim, dim, self.norm_fn, stride=1)
         layers = (layer1, layer2)
 
@@ -170,10 +182,9 @@ class BasicEncoder(nn.Module):
     def compute_params(self):
         num = 0
         for param in self.parameters():
-            num +=  np.prod(param.size())
+            num += np.prod(param.size())
 
         return num
-
 
     def forward(self, x):
 
@@ -209,7 +220,7 @@ class SmallEncoder(nn.Module):
 
         if self.norm_fn == 'group':
             self.norm1 = nn.GroupNorm(num_groups=8, num_channels=32)
-            
+
         elif self.norm_fn == 'batch':
             self.norm1 = nn.BatchNorm2d(32)
 
@@ -230,12 +241,13 @@ class SmallEncoder(nn.Module):
         self.dropout = None
         if dropout > 0:
             self.dropout = nn.Dropout2d(p=dropout)
-        
+
         self.conv2 = nn.Conv2d(96, output_dim, kernel_size=1)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode='fan_out', nonlinearity='relu')
             elif isinstance(m, (nn.BatchNorm2d, nn.InstanceNorm2d, nn.GroupNorm)):
                 if m.weight is not None:
                     nn.init.constant_(m.weight, 1)
@@ -243,13 +255,13 @@ class SmallEncoder(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, dim, stride=1):
-        layer1 = BottleneckBlock(self.in_planes, dim, self.norm_fn, stride=stride)
+        layer1 = BottleneckBlock(
+            self.in_planes, dim, self.norm_fn, stride=stride)
         layer2 = BottleneckBlock(dim, dim, self.norm_fn, stride=1)
         layers = (layer1, layer2)
-    
+
         self.in_planes = dim
         return nn.Sequential(*layers)
-
 
     def forward(self, x):
 
@@ -276,12 +288,15 @@ class SmallEncoder(nn.Module):
 
         return x
 
+
 class ConvNets(nn.Module):
     def __init__(self, in_dim, out_dim, inter_dim, depth, stride=1):
         super(ConvNets, self).__init__()
 
-        self.conv_first = nn.Conv2d(in_dim, inter_dim, kernel_size=3, padding=1, stride=stride)
-        self.conv_last = nn.Conv2d(inter_dim, out_dim, kernel_size=3, padding=1, stride=stride)
+        self.conv_first = nn.Conv2d(
+            in_dim, inter_dim, kernel_size=3, padding=1, stride=stride)
+        self.conv_last = nn.Conv2d(
+            inter_dim, out_dim, kernel_size=3, padding=1, stride=stride)
         self.relu = nn.ReLU(inplace=True)
         self.inter_convs = nn.ModuleList(
             [ResidualBlock(inter_dim, inter_dim, norm_fn='none', stride=1) for i in range(depth)])
@@ -293,6 +308,7 @@ class ConvNets(nn.Module):
         x = self.conv_last(x)
         return x
 
+
 class FlowHead(nn.Module):
     def __init__(self, input_dim=128, hidden_dim=256):
         super(FlowHead, self).__init__()
@@ -302,6 +318,7 @@ class FlowHead(nn.Module):
 
     def forward(self, x):
         return self.conv2(self.relu(self.conv1(x)))
+
 
 class ConvGRU(nn.Module):
     def __init__(self, hidden_dim=128, input_dim=192+128):
@@ -320,34 +337,41 @@ class ConvGRU(nn.Module):
         h = (1-z) * h + z * q
         return h
 
+
 class SepConvGRU(nn.Module):
     def __init__(self, hidden_dim=128, input_dim=192+128):
         super(SepConvGRU, self).__init__()
-        self.convz1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convr1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
-        self.convq1 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (1,5), padding=(0,2))
+        self.convz1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
+        self.convr1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
+        self.convq1 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (1, 5), padding=(0, 2))
 
-        self.convz2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convr2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-        self.convq2 = nn.Conv2d(hidden_dim+input_dim, hidden_dim, (5,1), padding=(2,0))
-
+        self.convz2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
+        self.convr2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
+        self.convq2 = nn.Conv2d(hidden_dim+input_dim,
+                                hidden_dim, (5, 1), padding=(2, 0))
 
     def forward(self, h, x):
         # horizontal
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz1(hx))
         r = torch.sigmoid(self.convr1(hx))
-        q = torch.tanh(self.convq1(torch.cat([r*h, x], dim=1)))        
+        q = torch.tanh(self.convq1(torch.cat([r*h, x], dim=1)))
         h = (1-z) * h + z * q
 
         # vertical
         hx = torch.cat([h, x], dim=1)
         z = torch.sigmoid(self.convz2(hx))
         r = torch.sigmoid(self.convr2(hx))
-        q = torch.tanh(self.convq2(torch.cat([r*h, x], dim=1)))       
+        q = torch.tanh(self.convq2(torch.cat([r*h, x], dim=1)))
         h = (1-z) * h + z * q
 
         return h
+
 
 class BasicMotionEncoder(nn.Module):
     def __init__(self, args):
@@ -369,10 +393,11 @@ class BasicMotionEncoder(nn.Module):
         out = F.relu(self.conv(cor_flo))
         return torch.cat([out, flow], dim=1)
 
+
 class BasicFuseMotion(nn.Module):
     def __init__(self, args):
         super(BasicFuseMotion, self).__init__()
-        cor_planes = args.motion_feature_dim 
+        cor_planes = args.motion_feature_dim
         out_planes = args.query_latent_dim
 
         self.normf1 = nn.InstanceNorm2d(128)
@@ -409,6 +434,7 @@ class BasicFuseMotion(nn.Module):
 
         return feat
 
+
 class BasicUpdateBlock(nn.Module):
     def __init__(self, args, hidden_dim=128, input_dim=128):
         super(BasicUpdateBlock, self).__init__()
@@ -433,6 +459,7 @@ class BasicUpdateBlock(nn.Module):
         mask = .25 * self.mask(net)
         return net, mask, delta_flow
 
+
 class DirectMeanMaskPredictor(nn.Module):
     def __init__(self, args):
         super(DirectMeanMaskPredictor, self).__init__()
@@ -447,6 +474,7 @@ class DirectMeanMaskPredictor(nn.Module):
         mask = .25 * self.mask(motion_features)
 
         return mask, delta_flow
+
 
 class BaiscMeanPredictor(nn.Module):
     def __init__(self, args, hidden_dim=128):
@@ -467,6 +495,7 @@ class BaiscMeanPredictor(nn.Module):
 
         return mask, delta_flow
 
+
 class BasicRPEEncoder(nn.Module):
     def __init__(self, args):
         super(BasicRPEEncoder, self).__init__()
@@ -483,7 +512,6 @@ class BasicRPEEncoder(nn.Module):
     def forward(self, rpe_tokens):
         return self.encoder(rpe_tokens)
 
-from .twins import Block, CrossBlock
 
 class TwinsSelfAttentionLayer(nn.Module):
     def __init__(self, args):
@@ -496,12 +524,12 @@ class TwinsSelfAttentionLayer(nn.Module):
         sr_ratio = 4
         dpr = 0.
         drop_rate = 0.
-        attn_drop_rate=0.
+        attn_drop_rate = 0.
 
         self.local_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
+                                 attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
         self.global_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
+                                  attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
 
         self.apply(self._init_weights)
 
@@ -531,6 +559,7 @@ class TwinsSelfAttentionLayer(nn.Module):
         tgt = self.global_block(tgt, size)
         return x, tgt
 
+
 class TwinsCrossAttentionLayer(nn.Module):
     def __init__(self, args):
         super(TwinsCrossAttentionLayer, self).__init__()
@@ -542,12 +571,12 @@ class TwinsCrossAttentionLayer(nn.Module):
         sr_ratio = 4
         dpr = 0.
         drop_rate = 0.
-        attn_drop_rate=0.
+        attn_drop_rate = 0.
 
         self.local_block = Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
+                                 attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=ws, with_rpe=True)
         self.global_block = CrossBlock(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, drop=drop_rate,
-                attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
+                                       attn_drop=attn_drop_rate, drop_path=dpr, sr_ratio=sr_ratio, ws=1, with_rpe=True)
 
         self.apply(self._init_weights)
 
