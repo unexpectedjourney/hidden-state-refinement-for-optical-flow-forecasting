@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 import evaluate_FlowFormer as evaluate
 import core.datasets as datasets
@@ -72,33 +73,48 @@ def train(cfg):
     should_keep_training = True
     while should_keep_training:
 
-        for i_batch, data_blob in enumerate(train_loader):
-            optimizer.zero_grad()
-            image1, image2, flow, valid = [x.to(DEVICE) for x in data_blob]
+        for i_batch, data_blob in enumerate(tqdm(train_loader)):
+            imgs, flows, valids = data_blob
 
-            if cfg.add_noise:
-                stdv = np.random.uniform(0.0, 5.0)
-                image1 = (
-                    image1 + stdv * torch.randn(*image1.shape).to(DEVICE)
-                ).clamp(0.0, 255.0)
-                image2 = (
-                    image2 + stdv * torch.randn(*image2.shape).to(DEVICE)
-                ).clamp(0.0, 255.0)
+            for j in range(imgs.shape[1]-1):
+                optimizer.zero_grad()
+                image1 = imgs[:, j, ...]
+                image2 = imgs[:, j+1, ...]
+                flow = flows[:, j, ...]
+                valid = valids[:, j, ...]
 
-            output = {}
-            flow_predictions = model(image1, image2, output)
-            loss, metrics = sequence_loss(flow_predictions, flow, valid, cfg)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(), cfg.trainer.clip)
+                image1 = image1.to(DEVICE)
+                image2 = image2.to(DEVICE)
+                flow = flow.to(DEVICE)
+                valid = valid.to(DEVICE)
 
-            scaler.step(optimizer)
-            scheduler.step()
-            scaler.update()
+                if cfg.add_noise:
+                    stdv = np.random.uniform(0.0, 5.0)
+                    image1 = (
+                        image1 + stdv * torch.randn(*image1.shape).to(DEVICE)
+                    ).clamp(0.0, 255.0)
+                    image2 = (
+                        image2 + stdv * torch.randn(*image2.shape).to(DEVICE)
+                    ).clamp(0.0, 255.0)
 
-            metrics.update(output)
-            logger.push(metrics)
+                output = {}
+                flow_predictions = model(image1, image2, output)
+                loss, metrics = sequence_loss(
+                    flow_predictions, flow, valid, cfg
+                )
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(),
+                    cfg.trainer.clip
+                )
+
+                scaler.step(optimizer)
+                scheduler.step()
+                scaler.update()
+
+                metrics.update(output)
+                logger.push(metrics)
 
             # change evaluate to functions
 

@@ -23,12 +23,14 @@ def validate_chairs(model):
 
     val_dataset = datasets.FlyingChairs(split='validation')
     for val_id in range(len(val_dataset)):
-        image1, image2, flow_gt, _ = val_dataset[val_id]
+        imgs, flow_gts, _ = val_dataset[val_id]
+        image1 = imgs[0, ...]
+        image2 = imgs[1, ...]
         image1 = image1[None].to(DEVICE)
         image2 = image2[None].to(DEVICE)
         flow_pre, _ = model(image1, image2)
 
-        epe = torch.sum((flow_pre[0].cpu() - flow_gt)**2, dim=0).sqrt()
+        epe = torch.sum((flow_pre[0].cpu() - flow_gts[0])**2, dim=0).sqrt()
         epe_list.append(epe.view(-1).numpy())
 
     epe = np.mean(np.concatenate(epe_list))
@@ -46,7 +48,9 @@ def validate_sintel(model):
         epe_list = []
 
         for val_id in range(len(val_dataset)):
-            image1, image2, flow_gt, _ = val_dataset[val_id]
+            imgs, flow_gts, _ = val_dataset[val_id]
+            image1 = imgs[0, ...]
+            image2 = imgs[1, ...]
             image1 = image1[None].to(DEVICE)
             image2 = image2[None].to(DEVICE)
             padder = InputPadder(image1.shape)
@@ -56,7 +60,7 @@ def validate_sintel(model):
 
             flow_pre = padder.unpad(flow_pre[0]).cpu()[0]
 
-            epe = torch.sum((flow_pre - flow_gt)**2, dim=0).sqrt()
+            epe = torch.sum((flow_pre - flow_gts[0])**2, dim=0).sqrt()
             epe_list.append(epe.view(-1).numpy())
 
         epe_all = np.concatenate(epe_list)
@@ -84,24 +88,30 @@ def create_sintel_submission(model, output_path='sintel_submission'):
         for test_id in range(len(test_dataset)):
             if (test_id+1) % 100 == 0:
                 print(f"{test_id} / {len(test_dataset)}")
-            image1, image2, (sequence, frame) = test_dataset[test_id]
-            image1, image2 = image1[None].to(DEVICE), image2[None].to(DEVICE)
+            imgs, (sequence, frame) = test_dataset[test_id]
 
-            padder = InputPadder(image1.shape)
-            image1, image2 = padder.pad(image1, image2)
+            for j in range(imgs.shape[0] - 1):
+                image1 = imgs[j, ...]
+                image2 = imgs[j+1, ...]
 
-            flow_pre = model(image1, image2)
+                image1 = image1[None].to(DEVICE)
+                image2 = image2[None].to(DEVICE)
 
-            flow_pre = padder.unpad(flow_pre[0]).cpu()
-            flow = flow_pre[0].permute(1, 2, 0).cpu().numpy()
+                padder = InputPadder(image1.shape)
+                image1, image2 = padder.pad(image1, image2)
 
-            output_dir = os.path.join(output_path, dstype, sequence)
-            output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
+                flow_pre = model(image1, image2)
 
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+                flow_pre = padder.unpad(flow_pre[0]).cpu()
+                flow = flow_pre[0].permute(1, 2, 0).cpu().numpy()
 
-            frame_utils.writeFlow(output_file, flow)
+                output_dir = os.path.join(output_path, dstype, sequence)
+                output_file = os.path.join(output_dir, 'frame%04d.flo' % (frame+1))
+
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+
+                frame_utils.writeFlow(output_file, flow)
 
 
 @torch.no_grad()
@@ -112,7 +122,12 @@ def validate_kitti(model):
 
     out_list, epe_list = [], []
     for val_id in range(len(val_dataset)):
-        image1, image2, flow_gt, valid_gt = val_dataset[val_id]
+        imgs, flow_gts, valid_gts = val_dataset[val_id]
+        image1 = imgs[0, ...]
+        image2 = imgs[1, ...]
+        flow_gt = flow_gts[0]
+        valid_gt = valid_gts[0]
+
         image1 = image1[None].to(DEVICE)
         image2 = image2[None].to(DEVICE)
 
