@@ -232,23 +232,24 @@ class MemoryDecoder(nn.Module):
             memory: [B*H1*W1, H2'*W2', C]
             context: [B, D, H1, W1]
         """
-        cost_maps = data['cost_maps']
-        coords0, coords1 = initialize_flow(context)
+        with torch.no_grad():
+            cost_maps = data['cost_maps']
+            coords0, coords1 = initialize_flow(context)
 
-        if flow_init is not None:
-            # print("[Using warm start]")
-            coords1 = coords1 + flow_init
+            if flow_init is not None:
+                # print("[Using warm start]")
+                coords1 = coords1 + flow_init
 
-        # flow = coords1
+            # flow = coords1
 
-        flow_predictions = []
+            flow_predictions = []
 
-        context = self.proj(context)
-        net, inp = torch.split(context, [128, 128], dim=1)
-        net = torch.tanh(net)
-        inp = torch.relu(inp)
-        if self.cfg.gma:
-            attention = self.att(inp)
+            context = self.proj(context)
+            net, inp = torch.split(context, [128, 128], dim=1)
+            net = torch.tanh(net)
+            inp = torch.relu(inp)
+            if self.cfg.gma:
+                attention = self.att(inp)
 
         if self.cfg.refiner and cached_data:
             frame1 = cached_data.get("frame1")
@@ -272,39 +273,41 @@ class MemoryDecoder(nn.Module):
                 ref_net,
                 ref_inp
             )
+            coords1 = coords1 + flow
 
-        size = net.shape
-        key, value = None, None
+        with torch.no_grad():
+            size = net.shape
+            key, value = None, None
 
-        for idx in range(self.depth):
-            coords1 = coords1.detach()
+            for idx in range(self.depth):
+                coords1 = coords1.detach()
 
-            cost_forward = self.encode_flow_token(cost_maps, coords1)
-            #cost_backward = self.reverse_cost_extractor(cost_maps, coords0, coords1)
+                cost_forward = self.encode_flow_token(cost_maps, coords1)
+                #cost_backward = self.reverse_cost_extractor(cost_maps, coords0, coords1)
 
-            query = self.flow_token_encoder(cost_forward)
-            query = query.permute(0, 2, 3, 1).contiguous().view(
-                size[0]*size[2]*size[3], 1, self.dim)
-            cost_global, key, value = self.decoder_layer(
-                query, key, value, cost_memory, coords1, size, data['H3W3'])
-            if self.cfg.only_global:
-                corr = cost_global
-            else:
-                corr = torch.cat([cost_global, cost_forward], dim=1)
+                query = self.flow_token_encoder(cost_forward)
+                query = query.permute(0, 2, 3, 1).contiguous().view(
+                    size[0]*size[2]*size[3], 1, self.dim)
+                cost_global, key, value = self.decoder_layer(
+                    query, key, value, cost_memory, coords1, size, data['H3W3'])
+                if self.cfg.only_global:
+                    corr = cost_global
+                else:
+                    corr = torch.cat([cost_global, cost_forward], dim=1)
 
-            flow = coords1 - coords0
+                flow = coords1 - coords0
 
-            if self.cfg.gma:
-                net, up_mask, delta_flow = self.update_block(
-                    net, inp, corr, flow, attention)
-            else:
-                net, up_mask, delta_flow = self.update_block(
-                    net, inp, corr, flow)
+                if self.cfg.gma:
+                    net, up_mask, delta_flow = self.update_block(
+                        net, inp, corr, flow, attention)
+                else:
+                    net, up_mask, delta_flow = self.update_block(
+                        net, inp, corr, flow)
 
-            # flow = delta_flow
-            coords1 = coords1 + delta_flow
-            flow_up = self.upsample_flow(coords1 - coords0, up_mask)
-            flow_predictions.append(flow_up)
+                # flow = delta_flow
+                coords1 = coords1 + delta_flow
+                flow_up = self.upsample_flow(coords1 - coords0, up_mask)
+                flow_predictions.append(flow_up)
 
         saved_net = net.clone().detach()
         saved_inp = net.clone().detach()

@@ -35,12 +35,13 @@ class FlowFormer(nn.Module):
 
         data = {}
 
-        if self.cfg.context_concat:
-            context = self.context_encoder(torch.cat([image1, image2], dim=1))
-        else:
-            context = self.context_encoder(image1)
+        with torch.no_grad():
+            if self.cfg.context_concat:
+                context = self.context_encoder(torch.cat([image1, image2], dim=1))
+            else:
+                context = self.context_encoder(image1)
 
-        cost_memory = self.memory_encoder(image1, image2, data, context)
+            cost_memory = self.memory_encoder(image1, image2, data, context)
 
         flow_predictions = self.memory_decoder(
             cost_memory, context, data, flow_init=flow_init,
