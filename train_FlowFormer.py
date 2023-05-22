@@ -56,7 +56,10 @@ def train(cfg):
 
     if cfg.restore_ckpt is not None:
         print("[Loading ckpt from {}]".format(cfg.restore_ckpt))
-        model.load_state_dict(torch.load(cfg.restore_ckpt), strict=True)
+        model.load_state_dict(torch.load(cfg.restore_ckpt), strict=False)
+        model.module.memory_decoder.refiner.feat_encoder.load_state_dict(
+            model.module.memory_encoder.feat_encoder.state_dict()
+        )
 
     model.to(DEVICE)
     model.train()
@@ -75,6 +78,7 @@ def train(cfg):
 
         for i_batch, data_blob in enumerate(tqdm(train_loader)):
             imgs, flows, valids = data_blob
+            cached_data = {}
 
             for j in range(imgs.shape[1]-1):
                 optimizer.zero_grad()
@@ -98,7 +102,13 @@ def train(cfg):
                     ).clamp(0.0, 255.0)
 
                 output = {}
-                flow_predictions = model(image1, image2, output)
+                flow_predictions, cached_data = model(
+                    image1, image2, output, cached_data=cached_data
+                )
+
+                cached_data["frame1"] = image1.clone().detach()
+                cached_data["frame2"] = image2.clone().detach()
+
                 loss, metrics = sequence_loss(
                     flow_predictions, flow, valid, cfg
                 )

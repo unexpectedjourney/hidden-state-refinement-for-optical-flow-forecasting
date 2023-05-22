@@ -11,6 +11,7 @@ from timm.models.layers import DropPath
 
 from .gru import BasicUpdateBlock, GMAUpdateBlock
 from .gma import Attention
+from .refiner import StateRefiner, StateMixer
 
 
 def initialize_flow(img):
@@ -179,6 +180,13 @@ class MemoryDecoder(nn.Module):
         else:
             self.update_block = BasicUpdateBlock(self.cfg, hidden_dim=128)
 
+        self.refiner = None
+        if self.cfg.refiner:
+            self.refiner = StateRefiner(
+                cfg, dim=128, heads=1, dim_head=128
+            )
+            self.mixer = StateMixer()
+
     def upsample_flow(self, flow, mask):
         """ Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination """
         N, _, H, W = flow.shape
@@ -212,7 +220,14 @@ class MemoryDecoder(nn.Module):
         corr = corr.view(batch, h1, w1, -1).permute(0, 3, 1, 2)
         return corr
 
-    def forward(self, cost_memory, context, data={}, flow_init=None):
+    def forward(
+            self,
+            cost_memory,
+            context,
+            data={},
+            flow_init=None,
+            cached_data={},
+    ):
         """
             memory: [B*H1*W1, H2'*W2', C]
             context: [B, D, H1, W1]
@@ -221,10 +236,10 @@ class MemoryDecoder(nn.Module):
         coords0, coords1 = initialize_flow(context)
 
         if flow_init is not None:
-            #print("[Using warm start]")
+            # print("[Using warm start]")
             coords1 = coords1 + flow_init
 
-        #flow = coords1
+        # flow = coords1
 
         flow_predictions = []
 
@@ -234,6 +249,29 @@ class MemoryDecoder(nn.Module):
         inp = torch.relu(inp)
         if self.cfg.gma:
             attention = self.att(inp)
+
+        if self.cfg.refiner and cached_data:
+            frame1 = cached_data.get("frame1")
+            frame2 = cached_data.get("frame2")
+            flow_init = cached_data.get("flow_init")
+            net_init = cached_data.get("net_init")
+            inp_init = cached_data.get("inp_init")
+
+            ref_flow, ref_net, ref_inp = self.refiner(
+                frame1,
+                frame2,
+                flow_init,
+                net_init,
+                inp_init,
+            )
+            flow, net, inp = self.mixer(
+                flow_init,
+                net_init,
+                inp_init,
+                ref_flow,
+                ref_net,
+                ref_inp
+            )
 
         size = net.shape
         key, value = None, None
@@ -268,7 +306,15 @@ class MemoryDecoder(nn.Module):
             flow_up = self.upsample_flow(coords1 - coords0, up_mask)
             flow_predictions.append(flow_up)
 
+        saved_net = net.clone().detach()
+        saved_inp = net.clone().detach()
+
+        cached_data = {
+            "net_init": saved_net,
+            "inp_init": saved_inp,
+            "flow_init": flow_predictions[-1].clone().detach(),
+        }
         if self.training:
-            return flow_predictions
+            return flow_predictions, cached_data
         else:
-            return flow_predictions[-1], coords1-coords0
+            return flow_predictions[-1], coords1-coords0, cached_data
