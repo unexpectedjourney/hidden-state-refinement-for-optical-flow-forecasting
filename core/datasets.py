@@ -340,6 +340,22 @@ def fetch_dataloader(args, seq_len=2, TRAIN_DS='C+T+K+S+H'):
         }
         train_dataset = KITTI(aug_params, split='training')
 
+    elif args.stage == 'sintel-seq':
+        aug_params = {
+            'crop_size': args.image_size,
+            'min_scale': -0.2,
+            'max_scale': 0.6,
+            'do_flip': True
+        }
+        # things = FlyingThingsSubset(aug_params)
+        sintel_clean = MpiSintel(
+            aug_params, split='training', dstype='clean', seq_len=seq_len
+        )
+        sintel_final = MpiSintel(
+            aug_params, split='training', dstype='final', seq_len=seq_len
+        )
+        train_dataset = 100*sintel_clean + 100*sintel_final
+
     train_loader = data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,

@@ -2,7 +2,7 @@ from yacs.config import CfgNode as CN
 _CN = CN()
 
 _CN.name = 'default'
-_CN.suffix ='sintel'
+_CN.suffix = 'sintel-seq'
 _CN.gamma = 0.85
 _CN.max_flow = 400
 # _CN.batch_size = 6

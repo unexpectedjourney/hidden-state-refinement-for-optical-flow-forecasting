@@ -278,7 +278,6 @@ class MemoryDecoder(nn.Module):
             flow = coords1 - coords0
             flow_predictions.append(flow)
 
-
         with torch.no_grad():
             size = net.shape
             key, value = None, None

@@ -184,6 +184,8 @@ if __name__ == '__main__':
         from configs.kitti import get_cfg
     elif args.stage == 'autoflow':
         from configs.autoflow import get_cfg
+    elif args.stage == 'sintel-seq':
+        from configs.sintel_seq import get_cfg
 
     cfg = get_cfg()
     cfg.update(vars(args))
