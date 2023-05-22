@@ -181,6 +181,7 @@ class MemoryDecoder(nn.Module):
             self.update_block = BasicUpdateBlock(self.cfg, hidden_dim=128)
 
         self.refiner = None
+        self.mixer = None
         if self.cfg.refiner:
             self.refiner = StateRefiner(
                 cfg, dim=128, heads=1, dim_head=128
@@ -274,6 +275,9 @@ class MemoryDecoder(nn.Module):
                 ref_inp
             )
             coords1 = coords1 + flow
+            flow = coords1 - coords0
+            flow_predictions.append(flow)
+
 
         with torch.no_grad():
             size = net.shape
