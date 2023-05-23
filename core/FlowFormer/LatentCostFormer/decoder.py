@@ -158,6 +158,11 @@ class ReverseCostExtractor(nn.Module):
         return corr
 
 
+def disable_grads(model):
+    for param in model.parameters():
+        param.requires_grad = False
+
+
 class MemoryDecoder(nn.Module):
     def __init__(self, cfg):
         super(MemoryDecoder, self).__init__()
@@ -172,13 +177,19 @@ class MemoryDecoder(nn.Module):
         self.proj = nn.Conv2d(256, 256, 1)
         self.depth = cfg.decoder_depth
         self.decoder_layer = MemoryDecoderLayer(dim, cfg)
+        disable_grads(self.flow_token_encoder)
+        disable_grads(self.proj)
+        disable_grads(self.decoder_layer)
 
         if self.cfg.gma:
             self.update_block = GMAUpdateBlock(self.cfg, hidden_dim=128)
             self.att = Attention(args=self.cfg, dim=128,
                                  heads=1, max_pos_size=160, dim_head=128)
+            disable_grads(self.update_block)
+            disable_grads(self.att)
         else:
             self.update_block = BasicUpdateBlock(self.cfg, hidden_dim=128)
+            disable_grads(self.update_block)
 
         self.refiner = None
         self.mixer = None
@@ -233,25 +244,25 @@ class MemoryDecoder(nn.Module):
             memory: [B*H1*W1, H2'*W2', C]
             context: [B, D, H1, W1]
         """
-        with torch.no_grad():
-            cost_maps = data['cost_maps']
-            coords0, coords1 = initialize_flow(context)
+        cost_maps = data['cost_maps']
+        coords0, coords1 = initialize_flow(context)
 
-            if flow_init is not None:
-                # print("[Using warm start]")
-                coords1 = coords1 + flow_init
+        if flow_init is not None:
+            # print("[Using warm start]")
+            coords1 = coords1 + flow_init
 
-            # flow = coords1
+        # flow = coords1
 
-            flow_predictions = []
+        flow_predictions = []
 
-            context = self.proj(context)
-            net, inp = torch.split(context, [128, 128], dim=1)
-            net = torch.tanh(net)
-            inp = torch.relu(inp)
-            if self.cfg.gma:
-                attention = self.att(inp)
+        context = self.proj(context)
+        net, inp = torch.split(context, [128, 128], dim=1)
+        net = torch.tanh(net)
+        inp = torch.relu(inp)
+        if self.cfg.gma:
+            attention = self.att(inp)
 
+        inertial_flow = None
         if self.cfg.refiner and cached_data:
             frame1 = cached_data.get("frame1")
             frame2 = cached_data.get("frame2")
@@ -275,52 +286,57 @@ class MemoryDecoder(nn.Module):
                 ref_inp
             )
             coords1 = coords1 + flow
+            inertial_flow = coords1 - coords0
+            mask = .25 * self.update_block.mask(net)
+            flow_up = self.upsample_flow(coords1 - coords0, mask)
+            flow_predictions.append(flow_up)
+
+        size = net.shape
+        key, value = None, None
+
+        for idx in range(self.depth):
+            coords1 = coords1.detach()
+
+            cost_forward = self.encode_flow_token(cost_maps, coords1)
+            #cost_backward = self.reverse_cost_extractor(cost_maps, coords0, coords1)
+
+            query = self.flow_token_encoder(cost_forward)
+            query = query.permute(0, 2, 3, 1).contiguous().view(
+                size[0]*size[2]*size[3], 1, self.dim
+            )
+            cost_global, key, value = self.decoder_layer(
+                query, key, value, cost_memory, coords1, size, data['H3W3']
+            )
+            if self.cfg.only_global:
+                corr = cost_global
+            else:
+                corr = torch.cat([cost_global, cost_forward], dim=1)
+
             flow = coords1 - coords0
-            flow_predictions.append(flow)
 
-        with torch.no_grad():
-            size = net.shape
-            key, value = None, None
+            if self.cfg.gma:
+                net, up_mask, delta_flow = self.update_block(
+                    net, inp, corr, flow, attention)
+            else:
+                net, up_mask, delta_flow = self.update_block(
+                    net, inp, corr, flow)
 
-            for idx in range(self.depth):
-                coords1 = coords1.detach()
-
-                cost_forward = self.encode_flow_token(cost_maps, coords1)
-                #cost_backward = self.reverse_cost_extractor(cost_maps, coords0, coords1)
-
-                query = self.flow_token_encoder(cost_forward)
-                query = query.permute(0, 2, 3, 1).contiguous().view(
-                    size[0]*size[2]*size[3], 1, self.dim)
-                cost_global, key, value = self.decoder_layer(
-                    query, key, value, cost_memory, coords1, size, data['H3W3'])
-                if self.cfg.only_global:
-                    corr = cost_global
-                else:
-                    corr = torch.cat([cost_global, cost_forward], dim=1)
-
-                flow = coords1 - coords0
-
-                if self.cfg.gma:
-                    net, up_mask, delta_flow = self.update_block(
-                        net, inp, corr, flow, attention)
-                else:
-                    net, up_mask, delta_flow = self.update_block(
-                        net, inp, corr, flow)
-
-                # flow = delta_flow
-                coords1 = coords1 + delta_flow
-                flow_up = self.upsample_flow(coords1 - coords0, up_mask)
-                flow_predictions.append(flow_up)
+            # flow = delta_flow
+            coords1 = coords1 + delta_flow
+            flow_up = self.upsample_flow(coords1 - coords0, up_mask)
+            flow_predictions.append(flow_up)
 
         saved_net = net.clone().detach()
-        saved_inp = net.clone().detach()
+        saved_inp = inp.clone().detach()
 
         cached_data = {
             "net_init": saved_net,
             "inp_init": saved_inp,
-            "flow_init": flow_predictions[-1].clone().detach(),
+            "flow_init": (coords1-coords0).clone().detach(),
+            "flow_inertial": inertial_flow,
         }
         if self.training:
             return flow_predictions, cached_data
         else:
+            cached_data["flow_predictions"] = flow_predictions
             return flow_predictions[-1], coords1-coords0, cached_data

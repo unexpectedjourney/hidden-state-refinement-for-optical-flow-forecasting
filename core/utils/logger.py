@@ -52,5 +52,11 @@ class Logger:
         for key in results:
             self.writer.add_scalar(key, results[key], self.total_steps)
 
+    def write_img(self, img, img_name, step):
+        if self.writer is None:
+            self.writer = SummaryWriter()
+
+        self.writer.add_image(img_name, img, step)
+
     def close(self):
         self.writer.close()

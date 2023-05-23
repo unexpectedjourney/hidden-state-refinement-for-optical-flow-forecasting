@@ -17,7 +17,6 @@ class StateRefiner(nn.Module):
 
         self.to_q = nn.Conv2d(dim, inner_dim, 1, bias=False)
         self.to_k = nn.Conv2d(dim, inner_dim, 1, bias=False)
-        self.to_v = nn.Conv2d(dim, inner_dim * 2, 1, bias=False)
 
         self.reduce_image_dims = nn.Sequential(
             nn.Conv2d(256, 256, 1, stride=1, padding=0),
@@ -184,8 +183,8 @@ class StateMixer(nn.Module):
         inp = torch.cat([i_init, i_ref], dim=1)
         inp = torch.relu(self.inp_out(inp))
 
-        flow = flow_ref + self.flow_gamma * flow
-        net = net_ref + self.net_gamma * net
-        inp = inp_ref + self.inp_gamma * inp
+        flow = flow_ref + self.gamma_flow * flow
+        net = net_ref + self.gamma_net * net
+        inp = inp_ref + self.gamma_inp * inp
 
         return flow, net, inp
