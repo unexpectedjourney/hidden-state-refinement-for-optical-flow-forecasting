@@ -18,6 +18,7 @@ from loguru import logger as loguru_logger
 
 # from torch.utils.tensorboard import SummaryWriter
 from core.utils.logger import Logger
+from core.utils.flow_viz import flow_to_image
 
 # from core.FlowFormer import FlowFormer
 from core.FlowFormer import build_flowformer
@@ -46,6 +47,45 @@ except:
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def visualize_validation_results(model, data_blob, logger, img_name, steps, args):
+    model.eval()
+    with torch.no_grad():
+        imgs, _, _ = data_blob
+        image1 = imgs[:, 0, ...]
+        image2 = imgs[:, 1, ...]
+        image3 = imgs[:, 2, ...]
+        image1 = image1.to(DEVICE)
+        image2 = image2.to(DEVICE)
+        image3 = image3.to(DEVICE)
+
+        _, _, cached_data = model(image1, image2)
+        cached_data["frame1"] = image1
+        cached_data["frame2"] = image2
+        _, _, cached_data = model(image2, image3, cached_data=cached_data)
+        flow_predictions = cached_data.get("flow_predictions", [])
+        flow_inertial = cached_data.get("flow_inertial")
+
+    model.train()
+    flow_predictions = [
+        el.clone().detach().cpu().numpy()[0, ...] for el in flow_predictions
+    ]
+
+    flow_predictions = flow_predictions[:1] + flow_predictions[-2:]
+
+    flow_prediction_line = np.concatenate(flow_predictions, axis=2)
+    try:
+        flow_prediction_line = flow_to_image(flow_prediction_line.T).T
+        logger.write_img(flow_prediction_line, img_name, steps)
+    except Exception as ex:
+        print(ex)
+    try:
+        flow_inertial = flow_inertial.clone().detach().cpu().numpy()[0, ...]
+        flow_inertial = flow_to_image(flow_inertial.T).T
+        logger.write_img(flow_inertial, f"{img_name}_inertial", steps)
+    except Exception as ex:
+        print(ex)
+
+
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -64,7 +104,17 @@ def train(cfg):
     model.to(DEVICE)
     model.train()
 
-    train_loader = datasets.fetch_dataloader(cfg)
+    train_loader = datasets.fetch_dataloader(cfg, seq_len=3)
+    aug_params = {
+        'crop_size': cfg.image_size,
+    }
+    val_data = datasets.MpiSintel(
+        aug_params,
+        split='training',
+        dstype="clean",
+        seq_len=3,
+    )
+    val_data_blob = [el.unsqueeze(0) for el in val_data[0]]
     optimizer, scheduler = fetch_optimizer(model, cfg.trainer)
 
     total_steps = 0
@@ -109,6 +159,9 @@ def train(cfg):
                 cached_data["frame1"] = image1.clone().detach()
                 cached_data["frame2"] = image2.clone().detach()
 
+                if not j:
+                    continue
+
                 loss, metrics = sequence_loss(
                     flow_predictions, flow, valid, cfg
                 )
@@ -130,18 +183,26 @@ def train(cfg):
 
             if total_steps % cfg.val_freq == cfg.val_freq - 1:
                 PATH = '%s/%d_%s.pth' % (cfg.log_dir, total_steps+1, cfg.name)
-                # torch.save(model.state_dict(), PATH)
+                visualize_validation_results(
+                    model,
+                    val_data_blob,
+                    logger,
+                    "train-sintel",
+                    total_steps,
+                    args,
+                )
+                torch.save(model.state_dict(), PATH)
 
-                results = {}
-                for val_dataset in cfg.validation:
-                    if val_dataset == 'chairs':
-                        results.update(evaluate.validate_chairs(model.module))
-                    elif val_dataset == 'sintel':
-                        results.update(evaluate.validate_sintel(model.module))
-                    elif val_dataset == 'kitti':
-                        results.update(evaluate.validate_kitti(model.module))
+                # results = {}
+                # for val_dataset in cfg.validation:
+                #     if val_dataset == 'chairs':
+                #         results.update(evaluate.validate_chairs(model.module))
+                #     elif val_dataset == 'sintel':
+                #         results.update(evaluate.validate_sintel(model.module))
+                #     elif val_dataset == 'kitti':
+                #         results.update(evaluate.validate_kitti(model.module))
 
-                logger.write_dict(results)
+                # logger.write_dict(results)
 
                 model.train()
 

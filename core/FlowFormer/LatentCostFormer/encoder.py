@@ -355,7 +355,7 @@ class MemoryEncoder(nn.Module):
         corr = einsum('bhid, bhjd -> bhij', fmap1, fmap2)
         corr = corr.permute(0, 2, 1, 3).view(
             batch*ht*wd, self.cfg.cost_heads_num, ht, wd)
-        #corr = self.norm(self.relu(corr))
+        # corr = self.norm(self.relu(corr))
         corr = corr.view(batch, ht*wd, self.cfg.cost_heads_num,
                          ht*wd).permute(0, 2, 1, 3)
         corr = corr.view(batch, self.cfg.cost_heads_num, ht, wd, ht, wd)
