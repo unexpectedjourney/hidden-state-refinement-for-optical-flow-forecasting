@@ -131,24 +131,64 @@ class StateRefiner(nn.Module):
         return out_flow, out_net, out_inp
 
 
+class ResidualBlock(nn.Module):
+    def __init__(
+            self, in_channels, out_channels, stride=1, downsample=None,
+            activate=True,
+    ):
+        super(ResidualBlock, self).__init__()
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU()
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(out_channels)
+        )
+        self.downsample = downsample
+        self.relu = nn.ReLU()
+        self.out_channels = out_channels
+        self.activate = activate
+
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.conv2(out)
+        if self.downsample:
+            residual = self.downsample(x)
+        out += residual
+        if self.activate:
+            out = self.relu(out)
+        return out
+
+
 class StateMixer(nn.Module):
     def __init__(self):
         super(StateMixer, self).__init__()
-        self.flow_c1 = nn.Conv2d(2, 128, 7, padding=3)
-        self.flow_c2 = nn.Conv2d(128, 64, 3, padding=1)
-        self.flow_out = nn.Conv2d(128, 2, 3, padding=1)
+        self.flow_out = nn.Sequential(
+            nn.Conv2d(4, 128, 3, padding=1),
+            nn.ReLU(),
+            ResidualBlock(128, 128),
+            ResidualBlock(128, 128),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.ReLU(),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256),
+            nn.Conv2d(256, 2, 3, padding=1),
+            nn.ReLU(),
+        )
 
-        self.net_c1 = nn.Conv2d(128, 256, 7, padding=3)
-        self.net_c2 = nn.Conv2d(256, 128, 3, padding=1)
-        self.net_out = nn.Conv2d(256, 128, 3, padding=1)
+        self.net_inp_out = nn.Sequential(
+            nn.Conv2d(512, 256, 7, padding=3),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256, activate=False),
+        )
 
-        self.inp_c1 = nn.Conv2d(128, 256, 7, padding=3)
-        self.inp_c2 = nn.Conv2d(256, 128, 3, padding=1)
-        self.inp_out = nn.Conv2d(256, 128, 3, padding=1)
-
-        self.gamma_flow = nn.Parameter(torch.zeros(1))
-        self.gamma_net = nn.Parameter(torch.zeros(1))
-        self.gamma_inp = nn.Parameter(torch.zeros(1))
+        self.gamma_flow = nn.Parameter(torch.tensor(0.5))
+        self.gamma_net = nn.Parameter(torch.tensor(0.5))
+        self.gamma_inp = nn.Parameter(torch.tensor(0.5))
 
     def forward(
             self,
@@ -159,32 +199,17 @@ class StateMixer(nn.Module):
             net_ref,
             inp_ref,
     ):
-        f_init = torch.relu(self.flow_c1(flow_init))
-        f_init = torch.relu(self.flow_c2(f_init))
-        f_ref = torch.relu(self.flow_c1(flow_ref))
-        f_ref = torch.relu(self.flow_c2(f_ref))
+        flow = torch.cat([flow_init, flow_ref], dim=1)
+        flow = self.flow_out(flow)
 
-        flow = torch.cat([f_init, f_ref], dim=1)
-        flow = torch.relu(self.flow_out(flow))
+        net_inp = torch.cat([net_init, inp_init, net_ref, inp_ref], dim=1)
+        net_inp = self.net_inp_out(net_inp)
+        net, inp = torch.split(net_inp, [128, 128], dim=1)
+        net = torch.tanh(net)
+        inp = torch.relu(inp)
 
-        n_init = torch.sigmoid(self.net_c1(net_init))
-        n_init = torch.sigmoid(self.net_c2(n_init))
-        n_ref = torch.sigmoid(self.net_c1(net_ref))
-        n_ref = torch.sigmoid(self.net_c2(n_ref))
-
-        net = torch.cat([n_init, n_ref], dim=1)
-        net = torch.tanh(self.net_out(net))
-
-        i_init = torch.relu(self.inp_c1(inp_init))
-        i_init = torch.relu(self.inp_c2(i_init))
-        i_ref = torch.relu(self.inp_c1(inp_ref))
-        i_ref = torch.relu(self.inp_c2(i_ref))
-
-        inp = torch.cat([i_init, i_ref], dim=1)
-        inp = torch.relu(self.inp_out(inp))
-
-        flow = flow_ref + self.gamma_flow * flow
-        net = net_ref + self.gamma_net * net
-        inp = inp_ref + self.gamma_inp * inp
+        flow = (1 - self.gamma_flow) * flow_init + self.gamma_flow * flow
+        net = (1 - self.gamma_net) * net_init + self.gamma_net * net
+        inp = (1 - self.gamma_inp) * inp_init + self.gamma_inp * inp
 
         return flow, net, inp

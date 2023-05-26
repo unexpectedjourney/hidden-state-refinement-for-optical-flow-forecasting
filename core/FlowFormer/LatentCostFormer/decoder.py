@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 from einops import rearrange
 
-from core.utils.utils import coords_grid, bilinear_sampler
+from core.utils.utils import coords_grid, bilinear_sampler, batch_forward_interpolate
 from .attention import MultiHeadAttention, LinearPositionEmbeddingSine, ExpPositionEmbeddingSine
 
 from timm.models.layers import DropPath
@@ -267,6 +267,7 @@ class MemoryDecoder(nn.Module):
             frame1 = cached_data.get("frame1")
             frame2 = cached_data.get("frame2")
             flow_init = cached_data.get("flow_init")
+            interpolated_flow_init = batch_forward_interpolate(flow_init)
             net_init = cached_data.get("net_init")
             inp_init = cached_data.get("inp_init")
 
@@ -278,9 +279,9 @@ class MemoryDecoder(nn.Module):
                 inp_init,
             )
             flow, net, inp = self.mixer(
-                flow_init,
-                net_init,
-                inp_init,
+                interpolated_flow_init,
+                net,
+                inp,
                 ref_flow,
                 ref_net,
                 ref_inp
