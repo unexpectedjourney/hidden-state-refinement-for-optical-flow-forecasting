@@ -199,6 +199,7 @@ class MemoryDecoder(nn.Module):
             )
             # self.mixer = StateMixer()
             self.mixer = RecurrentStateMixer()
+        self.eps = 1e-3
 
     def upsample_flow(self, flow, mask):
         """ Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination """
@@ -296,6 +297,9 @@ class MemoryDecoder(nn.Module):
         size = net.shape
         key, value = None, None
 
+        c_prev = coords1.clone().detach()
+        c_prev = c_prev.flatten(start_dim=1)
+        c_current = None
         for idx in range(self.depth):
             coords1 = coords1.detach()
 
@@ -325,8 +329,19 @@ class MemoryDecoder(nn.Module):
 
             # flow = delta_flow
             coords1 = coords1 + delta_flow
+
             flow_up = self.upsample_flow(coords1 - coords0, up_mask)
             flow_predictions.append(flow_up)
+
+            c_current = coords1.clone().detach()
+            c_current = c_current.flatten(start_dim=1)
+            abs_diff = (c_current - c_prev).norm(dim=1)
+            rel_diff = abs_diff / (c_current.norm(dim=1))
+
+            new_objective = rel_diff.max()
+            if new_objective < self.eps:
+                break
+            c_prev = c_current
 
         saved_net = net.clone().detach()
         saved_inp = inp.clone().detach()
