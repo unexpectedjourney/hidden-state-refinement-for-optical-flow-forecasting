@@ -59,6 +59,42 @@ def forward_interpolate(flow):
     return torch.from_numpy(flow).float()
 
 
+def batch_forward_interpolate(flows):
+    device = flows.device
+    flows = flows.detach().cpu().numpy()
+    N, C, H, W = flows.shape
+
+    dx, dy = flows[:, 0, :, :], flows[:, 1, :, :]
+    x0, y0 = np.meshgrid(np.arange(W), np.arange(H))
+
+    flow_x = np.zeros((N, H, W))
+    flow_y = np.zeros((N, H, W))
+
+    for i in range(N):
+        x1 = x0 + dx[i]
+        y1 = y0 + dy[i]
+
+        x1 = x1.reshape(-1)
+        y1 = y1.reshape(-1)
+        dx_flat = dx[i].reshape(-1)
+        dy_flat = dy[i].reshape(-1)
+
+        valid = (x1 > 0) & (x1 < W) & (y1 > 0) & (y1 < H)
+        x1 = x1[valid]
+        y1 = y1[valid]
+        dx_flat = dx_flat[valid]
+        dy_flat = dy_flat[valid]
+
+        flow_x[i] = interpolate.griddata(
+            (x1, y1), dx_flat, (x0, y0), method='nearest', fill_value=0)
+
+        flow_y[i] = interpolate.griddata(
+            (x1, y1), dy_flat, (x0, y0), method='nearest', fill_value=0)
+
+    flows = np.stack([flow_x, flow_y], axis=1)
+    return torch.from_numpy(flows).float().to(device)
+
+
 def bilinear_sampler(img, coords, mode='bilinear', mask=False):
     """ Wrapper for grid_sample, uses pixel coordinates """
     H, W = img.shape[-2:]
