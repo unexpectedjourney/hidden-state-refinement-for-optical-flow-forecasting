@@ -11,7 +11,7 @@ from timm.models.layers import DropPath
 
 from .gru import BasicUpdateBlock, GMAUpdateBlock
 from .gma import Attention
-from .refiner import StateRefiner, StateMixer
+from .refiner import StateRefiner, StateMixer, RecurrentStateMixer
 
 
 def initialize_flow(img):
@@ -197,7 +197,8 @@ class MemoryDecoder(nn.Module):
             self.refiner = StateRefiner(
                 cfg, dim=128, heads=1, dim_head=128
             )
-            self.mixer = StateMixer()
+            # self.mixer = StateMixer()
+            self.mixer = RecurrentStateMixer()
 
     def upsample_flow(self, flow, mask):
         """ Upsample flow field [H/8, W/8, 2] -> [H, W, 2] using convex combination """

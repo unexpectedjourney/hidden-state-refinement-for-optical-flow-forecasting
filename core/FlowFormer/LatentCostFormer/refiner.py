@@ -5,6 +5,7 @@ from einops import rearrange
 
 from ..encoders import twins_svt_large
 from .cnn import BasicEncoder
+from .gru import ConvGRU
 
 
 class StateRefiner(nn.Module):
@@ -210,6 +211,64 @@ class StateMixer(nn.Module):
 
         flow = (1 - self.gamma_flow) * flow_init + self.gamma_flow * flow
         net = (1 - self.gamma_net) * net_init + self.gamma_net * net
+        inp = (1 - self.gamma_inp) * inp_init + self.gamma_inp * inp
+
+        return flow, net, inp
+
+
+class RecurrentStateMixer(nn.Module):
+    def __init__(self):
+        super(RecurrentStateMixer, self).__init__()
+        self.flow_out = nn.Sequential(
+            nn.Conv2d(4, 128, 3, padding=1),
+            nn.ReLU(),
+            ResidualBlock(128, 128),
+            ResidualBlock(128, 128),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.ReLU(),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256),
+            nn.Conv2d(256, 2, 3, padding=1),
+            nn.ReLU(),
+        )
+        self.net_gru = ConvGRU(hidden_dim=128, input_dim=256+128+4)
+        self.inp_out = nn.Sequential(
+            nn.Conv2d(512+4, 256, 7, padding=3),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256),
+            ResidualBlock(256, 256),
+            nn.Conv2d(256, 128, 3, padding=1),
+        )
+
+        self.gamma_flow = nn.Parameter(torch.tensor(0.5))
+        self.gamma_net = nn.Parameter(torch.tensor(0.5))
+        self.gamma_inp = nn.Parameter(torch.tensor(0.5))
+
+    def forward(
+            self,
+            flow_init,
+            net_init,
+            inp_init,
+            flow_ref,
+            net_ref,
+            inp_ref,
+    ):
+        flow = torch.cat([flow_init, flow_ref], dim=1)
+        flow = self.flow_out(flow)
+        flow = (1 - self.gamma_flow) * flow_init + self.gamma_flow * flow
+
+        net_state = torch.cat([
+            net_ref, inp_init, inp_ref, flow_init, flow
+        ], dim=1)
+        net = self.net_gru(net_init, net_state)
+        net = torch.tanh(net)
+        net = (1 - self.gamma_net) * net_init + self.gamma_net * net
+
+        inp_state = torch.cat([
+            net_init, inp_init, net, inp_ref, flow_init, flow
+        ], dim=1)
+        inp = self.inp_out(inp_state)
+
         inp = (1 - self.gamma_inp) * inp_init + self.gamma_inp * inp
 
         return flow, net, inp
