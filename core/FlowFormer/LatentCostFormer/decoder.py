@@ -351,6 +351,7 @@ class MemoryDecoder(nn.Module):
             "inp_init": saved_inp,
             "flow_init": (coords1-coords0).clone().detach(),
             "flow_inertial": inertial_flow,
+            "update_iters": idx+1
         }
         if self.training:
             return flow_predictions, cached_data
