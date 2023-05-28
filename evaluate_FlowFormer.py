@@ -109,7 +109,7 @@ def validate_sintel(model):
         print(f"({dstype}-validation) Mean update iters value: {np.mean(used_iters)}")
         print(f"({dstype}-validation) Mean update time value: {np.mean(used_time)}")
         if epe_list:
-            print(f"({dstype}-validation) EPE refined value: {np.mean(epe_refined)}")
+            print(f"({dstype}-validation) EPE refined value: {np.mean(epe_list)}")
         epe_all = np.concatenate(epe_list)
         epe = np.mean(epe_all)
         px1 = np.mean(epe_all < 1)
