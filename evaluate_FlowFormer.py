@@ -57,6 +57,7 @@ def validate_sintel(model):
             seq_len=seq_len
         )
         epe_list = []
+        epe_refined = []
 
         for val_id in tqdm(range(len(val_dataset))):
             inner_val_id = val_id + jump_margin
@@ -96,8 +97,18 @@ def validate_sintel(model):
                 epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
                 epe_list.append(epe.view(-1).numpy())
 
+                if j:
+                    flow_predictions = cached_data.get("flow_predictions", [])
+                    if not flow_predictions:
+                        continue
+                    flow_refined = flow_predictions[0]
+                    flow_refined = padder.unpad(flow_refined[0]).cpu()
+                    epe_refined = torch.sum((flow_refined - flow_gt)**2, dim=0).sqrt()
+                    epe_list.append(epe_refined.view(-1).numpy())
+
         print(f"({dstype}-validation) Mean update iters value: {np.mean(used_iters)}")
         print(f"({dstype}-validation) Mean update time value: {np.mean(used_time)}")
+        print(f"({dstype}-validation) EPE refined value: {np.mean(epe_refined)}")
         epe_all = np.concatenate(epe_list)
         epe = np.mean(epe_all)
         px1 = np.mean(epe_all < 1)
