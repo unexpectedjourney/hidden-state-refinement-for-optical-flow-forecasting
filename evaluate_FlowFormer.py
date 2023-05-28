@@ -1,3 +1,4 @@
+import time
 import torch
 import numpy as np
 import os
@@ -49,6 +50,7 @@ def validate_sintel(model):
     for dstype in ['clean', 'final']:
         jump_margin = 0
         used_iters = []
+        used_time = []
         val_dataset = datasets.MpiSintel(
             split='training',
             dstype=dstype,
@@ -61,7 +63,6 @@ def validate_sintel(model):
             if inner_val_id >= len(val_dataset):
                 break
             imgs, flow_gts, _ = val_dataset[inner_val_id]
-
             cached_data = None
             for j in range(imgs.shape[0] - 1):
                 if j:
@@ -77,11 +78,14 @@ def validate_sintel(model):
                 padder = InputPadder(image1.shape)
                 image1, image2 = padder.pad(image1, image2)
 
+                start_point = time.time()
                 flow_low, flow_pr, cached_data = model(
                     image1,
                     image2,
                     cached_data=cached_data,
                 )
+                used_time.append(time.time() - start_point)
+
                 cached_data["frame1"] = image1.clone().detach()
                 cached_data["frame2"] = image2.clone().detach()
                 update_iters = cached_data.get("update_iters")
@@ -93,6 +97,7 @@ def validate_sintel(model):
                 epe_list.append(epe.view(-1).numpy())
 
         print(f"({dstype}-validation) Mean update iters value: {np.mean(used_iters)}")
+        print(f"({dstype}-validation) Mean update time value: {np.mean(used_time)}")
         epe_all = np.concatenate(epe_list)
         epe = np.mean(epe_all)
         px1 = np.mean(epe_all < 1)
@@ -115,6 +120,7 @@ def create_sintel_submission(model, output_path='sintel_submission'):
     for dstype in ['final', "clean"]:
         jump_margin = 0
         used_iters = []
+        used_time = []
 
         test_dataset = datasets.MpiSintel(
             split='test',
@@ -146,11 +152,14 @@ def create_sintel_submission(model, output_path='sintel_submission'):
                 padder = InputPadder(image1.shape)
                 image1, image2 = padder.pad(image1, image2)
 
+                start_point = time.time()
                 flow_low, flow_pr, cached_data = model(
                     image1,
                     image2,
                     cached_data=cached_data,
                 )
+                used_time.append(time.time() - start_point)
+
                 cached_data["frame1"] = image1.clone().detach()
                 cached_data["frame2"] = image2.clone().detach()
                 update_iters = cached_data.get("update_iters")
@@ -168,6 +177,7 @@ def create_sintel_submission(model, output_path='sintel_submission'):
                 frame_utils.writeFlow(output_file, flow)
 
         print(f"({dstype}-test) Mean update iters value: {np.mean(used_iters)}")
+        print(f"({dstype}-test) Mean update time value: {np.mean(used_time)}")
 
 
 @torch.no_grad()
