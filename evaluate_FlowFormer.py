@@ -47,6 +47,7 @@ def validate_sintel(model):
     model.eval()
     results = {}
     seq_len = 2
+    epe_step_completion = [[] for _ in range(12)]
     for dstype in ['clean', 'final']:
         jump_margin = 0
         used_iters = []
@@ -97,14 +98,20 @@ def validate_sintel(model):
                 epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
                 epe_list.append(epe.view(-1).numpy())
 
+                flow_predictions = cached_data.get("flow_predictions", [])
                 if j:
-                    flow_predictions = cached_data.get("flow_predictions", [])
                     if not flow_predictions:
                         continue
                     flow_refined = flow_predictions[0]
                     flow_refined = padder.unpad(flow_refined[0]).cpu()
                     epe_refined = torch.sum((flow_refined - flow_gt)**2, dim=0).sqrt()
                     epe_refined_list.append(epe_refined.view(-1).numpy())
+
+                for k, pred_flow in enumerate(flow_predictions):
+                    flow = padder.unpad(pred_flow[0]).cpu()
+                    epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
+                    epe = epe.view(-1).numpy()
+                    epe_step_completion[k].append(epe)
 
         print(f"({dstype}-validation) Mean update iters value: {np.mean(used_iters)}")
         print(f"({dstype}-validation) Mean update time value: {np.mean(used_time)}")
@@ -127,6 +134,9 @@ def validate_sintel(model):
         print("Validation (%s) EPE: %f, 1px: %f, 3px: %f, 5px: %f" %
               (dstype, epe, px1, px3, px5))
         results[dstype] = np.mean(epe_list)
+
+    epe_step_completion = np.mean(epe_step_completion, axis=1)
+    print("EPE step completion:", epe_step_completion)
 
     return results
 
