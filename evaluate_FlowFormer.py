@@ -113,7 +113,7 @@ def validate_sintel(model):
                     epe = torch.sum((flow - flow_gt)**2, dim=0).sqrt()
                     epe = epe.view(-1).numpy()
                     epe_step_completion[k] += np.mean(epe)
-                    flow_passed += 1
+                    flow_passed[k] += 1
 
         print(f"({dstype}-validation) Mean update iters value: {np.mean(used_iters)}")
         print(f"({dstype}-validation) Mean update time value: {np.mean(used_time)}")
