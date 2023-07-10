@@ -1,16 +1,4 @@
-# FlowFormer: A Transformer Architecture for Optical Flow
-### [Project Page](https://drinkingcoder.github.io/publication/flowformer/) 
-
-> FlowFormer: A Transformer Architecture for Optical Flow    
-> [Zhaoyang Huang](https://drinkingcoder.github.io)<sup>\*</sup>, Xiaoyu Shi<sup>\*</sup>, Chao Zhang, Qiang Wang, Ka Chun Cheung, [Hongwei Qin](http://qinhongwei.com/academic/), [Jifeng Dai](https://jifengdai.org/), [Hongsheng Li](https://www.ee.cuhk.edu.hk/~hsli/)  
-> ECCV 2022  
-
-
-<img src="assets/teaser.png">
-
-## TODO List
-- [x] Code release (2022-8-1)
-- [x] Models release (2022-8-1)
+# hidden-state-refinement-for-optical-flow-forecasting
 
 ## Data Preparation
 Similar to RAFT, to evaluate/train FlowFormer, you will need to download the required datasets. 
@@ -43,7 +31,7 @@ By default `datasets.py` will search for the datasets in these locations. You ca
 ```shell
 conda create --name flowformer
 conda activate flowformer
-conda install pytorch=1.6.0 torchvision=0.7.0 cudatoolkit=10.1 matplotlib tensorboard scipy opencv -c pytorch
+conda install pytorch torchvision cudatoolkit=10.1 matplotlib tensorboard scipy opencv -c pytorch
 pip install yacs loguru einops timm==0.4.12 imageio
 ```
 
@@ -56,19 +44,6 @@ To finish the entire training schedule, you can run:
 ```shell
 ./run_train.sh
 ```
-
-## Models
-We provide [models](https://drive.google.com/drive/folders/1K2dcWxaqOLiQ3PoqRdokrgWsGIf3yBA_?usp=sharing) trained in the four stages. The default path of the models for evaluation is:
-```Shell
-├── checkpoints
-    ├── chairs.pth
-    ├── things.pth
-    ├── sintel.pth
-    ├── kitti.pth
-    ├── flowformer-small.pth 
-    ├── things_kitti.pth
-```
-flowformer-small.pth is a small version of our flowformer. things_kitti.pth is the FlowFormer# introduced in our [supplementary](https://drinkingcoder.github.io/publication/flowformer/images/FlowFormer-supp.pdf), used for KITTI training set evaluation.
 
 ## Evaluation
 The model to be evaluated is assigned by the `_CN.model` in the config file.
@@ -124,24 +99,3 @@ The default image sequence format is:
             .
         ├── 001000.png
 ```
-
-
-## License
-FlowFormer is released under the Apache License
-
-## Citation
-```bibtex
-@article{huang2022flowformer,
-  title={{FlowFormer}: A Transformer Architecture for Optical Flow},
-  author={Huang, Zhaoyang and Shi, Xiaoyu and Zhang, Chao and Wang, Qiang and Cheung, Ka Chun and Qin, Hongwei and Dai, Jifeng and Li, Hongsheng},
-  journal={{ECCV}},
-  year={2022}
-}
-```
-
-## Acknowledgement
-
-In this project, we use parts of codes in:
-- [RAFT](https://github.com/princeton-vl/RAFT)
-- [GMA](https://github.com/zacjiang/GMA)
-- [timm](https://github.com/rwightman/pytorch-image-models)
